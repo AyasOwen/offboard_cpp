@@ -122,9 +122,16 @@ ament_target_dependencies(2025_Ti_main_node
 )
 
 # ---------------------------------------------
+<<<<<<< HEAD
 # 安装所有可执行文件
 install(TARGETS
   offboard_node
+=======
+# ��װ���п�ִ���ļ�
+install(TARGETS
+  offboard_node
+  2024_Ti_demo_node
+>>>>>>> 6f412de9b9d4309d84ae67aff3e65ff746098132
   2025_Ti_main_node
   DESTINATION lib/${PROJECT_NAME}
 )
