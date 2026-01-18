@@ -390,14 +390,19 @@ void OffboardNode_2025::control_loop()
     }
 
     // 1. Wait for FCU connection
-    if (!current_state_.connected) {
-        RCLCPP_WARN(this->get_logger(), "Waiting for FCU connection...");
-        return;
+    static bool received_first_state = false;
+    if (!received_first_state) {
+        if (current_state_.arming_state == 0 && current_state_.nav_state == 0) {
+            RCLCPP_WARN(this->get_logger(), "Waiting for FCU connection...");
+            return;
+        }
+        received_first_state = true;
     }
 
     // 2. Pre-warm by sending 100 setpoints
     if (setpoint_counter_ < 100) {
-        publish_setpoint();
+        publish_offboard_control_mode();
+        publish_trajectory_setpoint();
         setpoint_counter_++;
         if (setpoint_counter_ == 100) {
             RCLCPP_INFO(this->get_logger(), "Setpoint pre-warming complete");
@@ -430,20 +435,16 @@ void OffboardNode_2025::control_loop()
             break;
 
         case 2:  // Switch to OFFBOARD and arm
-            if (current_state_.mode != "OFFBOARD") {
-                if ((now - last_request_).seconds() > 2.0 && set_mode_client_->service_is_ready()) {
-                    auto req = std::make_shared<mavros_msgs::srv::SetMode::Request>();
-                    req->custom_mode = "OFFBOARD";
-                    set_mode_client_->async_send_request(req);
+            if (!in_offboard_mode_) {
+                if ((now - last_request_).seconds() > 2.0) {
+                    switch_to_offboard();
                     RCLCPP_INFO(this->get_logger(), "Requesting OFFBOARD mode...");
                     last_request_ = now;
                 }
             } 
-            else if (!current_state_.armed) {
-                if ((now - last_request_).seconds() > 2.0 && arming_client_->service_is_ready()) {
-                    auto req = std::make_shared<mavros_msgs::srv::CommandBool::Request>();
-                    req->value = true;
-                    arming_client_->async_send_request(req);
+            else if (!armed_) {
+                if ((now - last_request_).seconds() > 2.0) {
+                    arm();
                     RCLCPP_INFO(this->get_logger(), "Arming...");
                     last_request_ = now;
                 }
@@ -456,7 +457,8 @@ void OffboardNode_2025::control_loop()
 
         case 3:  // Takeoff phase
             target_position_ = {0.0, 0.0, 1.2};
-            publish_setpoint();
+            publish_offboard_control_mode();
+            publish_trajectory_setpoint();
             if (reached_target()) {
                 RCLCPP_INFO(this->get_logger(), "Takeoff complete, starting path traversal");
                 set_mod(4);
@@ -488,7 +490,8 @@ void OffboardNode_2025::control_loop()
 
         case 5:  // Return to home
             target_position_ = {0, 0, 1.2};
-            //publish_setpoint();
+            publish_offboard_control_mode();
+            publish_trajectory_setpoint();
             if (reached_target()) {
                 RCLCPP_INFO(this->get_logger(), "Returned to home, preparing to land");
                 set_mod(6);
@@ -496,7 +499,8 @@ void OffboardNode_2025::control_loop()
             break;
 
         case 6:  // Descending phase
-            publish_velocity(0.0, 0.0, -0.3);
+            publish_offboard_control_mode(false, true);
+            publish_velocity_setpoint(0.0, 0.0, -0.3);
             if (current_position_[2] < 0.5 && std::abs(current_velocity_[2]) < 0.05) {
                 RCLCPP_INFO(this->get_logger(), "Close to ground, executing LAND");
                 set_mod(7);
@@ -511,9 +515,10 @@ void OffboardNode_2025::control_loop()
             break;
     }
 
-    // Continuously publish setpoint commands
+    // Continuously publish offboard control mode
     if (mod_ <= 5) {
-        publish_setpoint();
+        publish_offboard_control_mode();
+        publish_trajectory_setpoint();
     }
 }
 

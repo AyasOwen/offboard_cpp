@@ -10,7 +10,6 @@ public:
 
 protected:
     void control_loop() override;
-    void vel_cb(const geometry_msgs::msg::TwistStamped::SharedPtr msg);
 };
 
 #endif // DEMO_HPP

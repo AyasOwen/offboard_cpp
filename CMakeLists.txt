@@ -12,8 +12,7 @@ endif()
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(std_msgs REQUIRED)
-find_package(geometry_msgs REQUIRED)
-find_package(mavros_msgs REQUIRED)
+find_package(px4_msgs REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
@@ -49,8 +48,7 @@ target_include_directories(offboard_control_node_lib PUBLIC
 ament_target_dependencies(offboard_control_node_lib
   rclcpp
   std_msgs
-  geometry_msgs
-  mavros_msgs
+  px4_msgs
   tf2
   tf2_ros
   tf2_geometry_msgs
@@ -75,8 +73,7 @@ ament_target_dependencies(offboard_action_node_lib
   rclcpp
   rclcpp_action 
   std_msgs
-  geometry_msgs
-  mavros_msgs
+  px4_msgs
   tf2
   tf2_ros
   tf2_geometry_msgs
@@ -121,17 +118,9 @@ ament_target_dependencies(2025_Ti_main_node
   std_msgs
 )
 
-# ---------------------------------------------
-<<<<<<< HEAD
 # 安装所有可执行文件
 install(TARGETS
   offboard_node
-=======
-# ��װ���п�ִ���ļ�
-install(TARGETS
-  offboard_node
-  2024_Ti_demo_node
->>>>>>> 6f412de9b9d4309d84ae67aff3e65ff746098132
   2025_Ti_main_node
   DESTINATION lib/${PROJECT_NAME}
 )

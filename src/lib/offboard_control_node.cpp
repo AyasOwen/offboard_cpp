@@ -1,73 +1,103 @@
-#include "lib/offboard_control_node.hpp" // 包含自己定义的头文件
+#include "lib/offboard_control_node.hpp"
 
-using namespace std::chrono_literals; // 可以在 .cpp 文件中安全地使用
+using namespace std::chrono_literals;
+using namespace px4_msgs::msg;
 
 OffboardControlNode::OffboardControlNode() : Node("offboard_control_node") {
-    current_state_ = mavros_msgs::msg::State();
+    current_state_ = VehicleStatus();
     current_position_.fill(0.0);
     current_velocity_.fill(0.0);
     target_position_ = {0.0, 0.0, 0.0};
     setpoint_counter_ = 0;
     mod_ = 0;
+    armed_ = false;
+    in_offboard_mode_ = false;
+    timestamp_ = 0;
 
-    state_sub_ = this->create_subscription<mavros_msgs::msg::State>(
-        "mavros/state", 10, std::bind(&OffboardControlNode::state_cb, this, std::placeholders::_1));
+    // PX4 的 /fmu/out 话题在不同环境里 durability 可能是 VOLATILE。
+    // 如果订阅端强制使用 TRANSIENT_LOCAL，而发布端是 VOLATILE，会直接 QoS 不兼容 -> 收不到任何状态/里程计。
+    // 这会导致本节点一直认为“未进入OFFBOARD/未解锁”，看起来就像卡在 arm。
+    auto qos_px4 = rclcpp::QoS(rclcpp::KeepLast(10))
+                       .best_effort()
+                       .durability_volatile();
 
-    pos_sub_ = this->create_subscription<geometry_msgs::msg::PoseStamped>(
-        "mavros/local_position/pose", rclcpp::SensorDataQoS(), std::bind(&OffboardControlNode::pos_cb, this, std::placeholders::_1));
+    state_sub_ = this->create_subscription<VehicleStatus>(
+        "/fmu/out/vehicle_status", qos_px4, std::bind(&OffboardControlNode::state_cb, this, std::placeholders::_1));
 
-    vel_sub_ = this->create_subscription<geometry_msgs::msg::TwistStamped>(
-        "mavros/local_position/velocity_local", rclcpp::SensorDataQoS(), std::bind(&OffboardControlNode::vel_cb, this, std::placeholders::_1));
+    odom_sub_ = this->create_subscription<VehicleOdometry>(
+        "/fmu/out/vehicle_odometry", qos_px4, std::bind(&OffboardControlNode::odom_cb, this, std::placeholders::_1));
 
-    local_pos_pub_ = this->create_publisher<geometry_msgs::msg::PoseStamped>("mavros/setpoint_position/local", 10);
-    vel_pub_ = this->create_publisher<geometry_msgs::msg::TwistStamped>("mavros/setpoint_velocity/cmd_vel", 10);
+    offboard_control_mode_pub_ = this->create_publisher<OffboardControlMode>("/fmu/in/offboard_control_mode", 10);
+    trajectory_setpoint_pub_ = this->create_publisher<TrajectorySetpoint>("/fmu/in/trajectory_setpoint", 10);
+    vehicle_command_pub_ = this->create_publisher<VehicleCommand>("/fmu/in/vehicle_command", 10);
     mod_pub_ = this->create_publisher<std_msgs::msg::UInt8>("px4/mod", 10);
 
-    arming_client_ = this->create_client<mavros_msgs::srv::CommandBool>("mavros/cmd/arming");
-    mode_client_ = this->create_client<mavros_msgs::srv::SetMode>("mavros/set_mode");
-    set_mode_client_ = this->create_client<mavros_msgs::srv::SetMode>("/mavros/set_mode");
-
     last_request_ = this->now();
-    timer_ = this->create_wall_timer(50ms, std::bind(&OffboardControlNode::control_loop, this));
+    // 用 lambda 调用虚函数，确保派生类 override 的 control_loop() 会被正确调用
+    timer_ = this->create_wall_timer(50ms, [this]() { this->control_loop(); });
     RCLCPP_INFO(this->get_logger(), "OffboardControlNode started.");
 }
 
-void OffboardControlNode::state_cb(const mavros_msgs::msg::State::SharedPtr msg) {
+void OffboardControlNode::state_cb(const px4_msgs::msg::VehicleStatus::SharedPtr msg) {
     current_state_ = *msg;
+    armed_ = (msg->arming_state == VehicleStatus::ARMING_STATE_ARMED);
+    in_offboard_mode_ = (msg->nav_state == VehicleStatus::NAVIGATION_STATE_OFFBOARD);
+
+    RCLCPP_INFO_THROTTLE(
+        this->get_logger(), *this->get_clock(), 2000,
+        "vehicle_status rx: nav_state=%u arming_state=%u (armed=%d offboard=%d)",
+        (unsigned)msg->nav_state, (unsigned)msg->arming_state, (int)armed_, (int)in_offboard_mode_);
 }
 
-void OffboardControlNode::pos_cb(const geometry_msgs::msg::PoseStamped::SharedPtr msg) {
-    current_position_ = {msg->pose.position.x, msg->pose.position.y, msg->pose.position.z};
+void OffboardControlNode::odom_cb(const px4_msgs::msg::VehicleOdometry::SharedPtr msg) {
+    current_position_ = {msg->position[0], msg->position[1], msg->position[2]};
+    current_velocity_ = {msg->velocity[0], msg->velocity[1], msg->velocity[2]};
+    timestamp_ = msg->timestamp;
+
+    RCLCPP_INFO_THROTTLE(
+        this->get_logger(), *this->get_clock(), 2000,
+        "vehicle_odometry rx: t=%lu pos=[%.2f %.2f %.2f] vel=[%.2f %.2f %.2f]",
+        (unsigned long)msg->timestamp,
+        (double)msg->position[0], (double)msg->position[1], (double)msg->position[2],
+        (double)msg->velocity[0], (double)msg->velocity[1], (double)msg->velocity[2]);
 }
 
-void OffboardControlNode::vel_cb(const geometry_msgs::msg::TwistStamped::SharedPtr msg) {
-    current_velocity_ = {msg->twist.linear.x, msg->twist.linear.y, msg->twist.linear.z};
+void OffboardControlNode::publish_offboard_control_mode(bool position, bool velocity) {
+    OffboardControlMode msg{};
+    msg.position = position;
+    msg.velocity = velocity;
+    msg.acceleration = false;
+    msg.attitude = false;
+    msg.body_rate = false;
+    msg.timestamp = this->get_clock()->now().nanoseconds() / 1000;
+    offboard_control_mode_pub_->publish(msg);
 }
 
-void OffboardControlNode::publish_setpoint(double yaw) {
-    geometry_msgs::msg::PoseStamped pose;
-    pose.header.stamp = this->now();
-    pose.pose.position.x = target_position_[0];
-    pose.pose.position.y = target_position_[1];
-    pose.pose.position.z = target_position_[2];
-
-    tf2::Quaternion q;
-    q.setRPY(0, 0, yaw);
-    pose.pose.orientation.x = q.x();
-    pose.pose.orientation.y = q.y();
-    pose.pose.orientation.z = q.z();
-    pose.pose.orientation.w = q.w();
-
-    local_pos_pub_->publish(pose);
+void OffboardControlNode::publish_trajectory_setpoint(double yaw) {
+    TrajectorySetpoint msg{};
+    msg.position = {(float)target_position_[0], (float)target_position_[1], (float)target_position_[2]};
+    // 位置控制时，把不使用的字段设为 NaN，避免 PX4 认为这些字段也是有效指令
+    const float nan = std::numeric_limits<float>::quiet_NaN();
+    msg.velocity = {nan, nan, nan};
+    msg.acceleration = {nan, nan, nan};
+    msg.jerk = {nan, nan, nan};
+    msg.yawspeed = nan;
+    msg.yaw = (float)yaw;
+    msg.timestamp = this->get_clock()->now().nanoseconds() / 1000;
+    trajectory_setpoint_pub_->publish(msg);
 }
 
-void OffboardControlNode::publish_velocity(double vx, double vy, double vz) {
-    geometry_msgs::msg::TwistStamped twist;
-    twist.header.stamp = this->now();
-    twist.twist.linear.x = vx;
-    twist.twist.linear.y = vy;
-    twist.twist.linear.z = vz;
-    vel_pub_->publish(twist);
+void OffboardControlNode::publish_velocity_setpoint(double vx, double vy, double vz) {
+    TrajectorySetpoint msg{};
+    const float nan = std::numeric_limits<float>::quiet_NaN();
+    msg.position = {nan, nan, nan};
+    msg.velocity = {(float)vx, (float)vy, (float)vz};
+    msg.acceleration = {nan, nan, nan};
+    msg.jerk = {nan, nan, nan};
+    msg.yaw = nan;
+    msg.yawspeed = nan;
+    msg.timestamp = this->get_clock()->now().nanoseconds() / 1000;
+    trajectory_setpoint_pub_->publish(msg);
 }
 
 bool OffboardControlNode::reached_target(double pos_tol) {
@@ -79,18 +109,55 @@ bool OffboardControlNode::reached_target(double pos_tol) {
     return true;
 }
 
+void OffboardControlNode::publish_vehicle_command(uint16_t command, float param1, float param2) {
+    VehicleCommand msg{};
+    msg.param1 = param1;
+    msg.param2 = param2;
+    msg.command = command;
+    msg.target_system = 1;
+    msg.target_component = 1;
+    msg.source_system = 1;
+    msg.source_component = 1;
+    msg.from_external = true;
+    msg.timestamp = this->get_clock()->now().nanoseconds() / 1000;
+    vehicle_command_pub_->publish(msg);
+}
+
+void OffboardControlNode::arm() {
+    publish_vehicle_command(VehicleCommand::VEHICLE_CMD_COMPONENT_ARM_DISARM, 1.0);
+    RCLCPP_INFO(this->get_logger(), "Arm command sent");
+}
+
+void OffboardControlNode::disarm() {
+    publish_vehicle_command(VehicleCommand::VEHICLE_CMD_COMPONENT_ARM_DISARM, 0.0);
+    RCLCPP_INFO(this->get_logger(), "Disarm command sent");
+}
+
+void OffboardControlNode::switch_to_offboard() {
+    publish_vehicle_command(VehicleCommand::VEHICLE_CMD_DO_SET_MODE, 1, 6);
+    RCLCPP_INFO(this->get_logger(), "Switch to OFFBOARD mode");
+}
+
 void OffboardControlNode::control_loop() {
     auto now = this->now();
 
-    // 1. 检查是否连接飞控
-    if (!current_state_.connected) {
-        RCLCPP_WARN(this->get_logger(), "等待飞控连接...");
-        return;
+    // 1. 检查是否收到飞控状态（通过检查是否有有效的里程表数据）
+    static bool received_first_odometry = false;
+    if (!received_first_odometry) {
+        // 首次需要收到里程表数据
+        if (timestamp_ == 0) {
+            RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 2000, 
+                "等待飞控连接... (检查MicroXRCEDDS Agent是否启动)");
+            return;
+        }
+        received_first_odometry = true;
+        RCLCPP_INFO(this->get_logger(), "飞控已连接，timestamp: %lu", timestamp_);
     }
 
     // 2. 切 OFFBOARD 前，先预热 setpoint
     if (setpoint_counter_ < 100) {
-        publish_setpoint();  // 不断发布当前位置 setpoint
+        publish_offboard_control_mode();
+        publish_trajectory_setpoint();  // 不断发布当前位置 setpoint
         setpoint_counter_++;
         if (setpoint_counter_ == 100) {
             RCLCPP_INFO(this->get_logger(), "已完成 setpoint 预热，准备进入 OFFBOARD 模式");
@@ -98,40 +165,49 @@ void OffboardControlNode::control_loop() {
         return;  // 直接返回，不执行状态机
     }
 
-    // 3. 若进入 OFFBOARD 模式
-    if (current_state_.mode == "OFFBOARD") {
-        // 3.1 若未解锁，每隔5秒尝试一次
-        if (!current_state_.armed &&
-            (now - last_request_).seconds() > 5.0) {
-            if (arming_client_->service_is_ready()) {
-                auto req = std::make_shared<mavros_msgs::srv::CommandBool::Request>();
-                req->value = true;
-                arming_client_->async_send_request(req);
-                RCLCPP_INFO(this->get_logger(), "请求解锁...");
-                last_request_ = now;
-            } else {
-                RCLCPP_WARN(this->get_logger(), "解锁服务未就绪，等待...");
-            }
-            return;
+    // 3. 尝试进入 OFFBOARD 模式（持续发送setpoint）
+    if (!in_offboard_mode_) {
+        publish_offboard_control_mode();  // ⭐ 持续发送
+        publish_trajectory_setpoint();      // ⭐ 持续发送
+        if ((now - last_request_).seconds() > 5.0) {
+            RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 5000, "尝试切换到 OFFBOARD 模式");
+            switch_to_offboard();
+            last_request_ = now;
         }
+        return;  // 等待进入offboard模式
+    }
 
-        // 3.2 若已解锁，开始执行任务状态机
-        if (1) {
-        RCLCPP_WARN(this->get_logger(), "解锁，等待...");
+    // 4. 若进入 OFFBOARD 模式，尝试解锁（持续发送setpoint）
+    if (!armed_) {
+        publish_offboard_control_mode();  // ⭐ 持续发送
+        publish_trajectory_setpoint();      // ⭐ 持续发送
+        if ((now - last_request_).seconds() > 2.0) {
+            RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 2000, "尝试解锁");
+            arm();
+            last_request_ = now;
+        }
+        return;  // 等待解锁
+    }
+
+    // 5. 已解锁，开始执行任务状态机
+    if (armed_ && in_offboard_mode_) {
+        RCLCPP_INFO_ONCE(this->get_logger(), "已进入OFFBOARD模式并解锁，执行任务...");
             switch (mod_) {
                 case 0:
-                    target_position_ = {0.0, 0.0, 1.2};
-                    publish_setpoint();
+                    target_position_ = {0.0, 0.0, -1.2};  // 上升到1.2米（NED坐标系）
+                    publish_offboard_control_mode();
+                    publish_trajectory_setpoint();
                     if (reached_target()) {
-                        RCLCPP_INFO(this->get_logger(), "已起飞至 %.2f 米", target_position_[2]);
+                        RCLCPP_INFO(this->get_logger(), "已起飞至 %.2f 米", -target_position_[2]);
                         mod_ = 1;
                         publish_mod();
                     }
                     break;
 
                 case 1:
-                    target_position_ = {0.3, 0.0, 1.2};
-                    publish_setpoint();
+                    target_position_ = {0.3, 0.0, -1.2};  // 移动到北方0.3米
+                    publish_offboard_control_mode();
+                    publish_trajectory_setpoint();
                     if (reached_target()) {
                         RCLCPP_INFO(this->get_logger(), "mod = 2");
                         mod_ = 2;
@@ -140,8 +216,9 @@ void OffboardControlNode::control_loop() {
                     break;
 
                 case 2:
-                    target_position_ = {0.3, 0.3, 1.2};
-                    publish_setpoint();
+                    target_position_ = {0.3, 0.3, -1.2};  // 移动到东方0.3米
+                    publish_offboard_control_mode();
+                    publish_trajectory_setpoint();
                     if (reached_target()) {
                         RCLCPP_INFO(this->get_logger(), "mod = 3");
                         mod_ = 3;
@@ -150,8 +227,9 @@ void OffboardControlNode::control_loop() {
                     break;
 
                 case 3:
-                    publish_velocity(0.0, 0.0, -0.3);
-                    if (current_position_[2] < 0.5 &&
+                    publish_offboard_control_mode(false, true);
+                    publish_velocity_setpoint(0.0, 0.0, 0.3);  // 向下（下降）速度0.3 m/s
+                    if (current_position_[2] > 0.5 &&  // Z > 0.5米表示离地面小于0.5米
                         std::abs(current_velocity_[2]) < 0.05) {
                         RCLCPP_INFO(this->get_logger(), "即将降落...");
                         mod_ = 4;
@@ -174,53 +252,78 @@ void OffboardControlNode::control_loop() {
                     break;
             }
 
-            // 在前3阶段持续发布 setpoint
+            // 在前3阶段持续发布 offboard control mode
             if (mod_ < 3) {
-                publish_setpoint();
+                publish_offboard_control_mode();
             }
-        }
     }
 }
 
 
 void OffboardControlNode::land(){
-    auto req = std::make_shared<mavros_msgs::srv::SetMode::Request>();
-    req->custom_mode = "AUTO.LAND";
-    mode_client_->async_send_request(req);
-    RCLCPP_INFO(this->get_logger(), "已请求 AUTO.LAND");
+    auto req = std::make_shared<VehicleCommand>();
+    req->command = VehicleCommand::VEHICLE_CMD_NAV_LAND;
+    req->param1 = 0;
+    req->param2 = 0;
+    req->target_system = 1;
+    req->target_component = 1;
+    req->source_system = 1;
+    req->source_component = 1;
+    req->from_external = true;
+    req->timestamp = this->get_clock()->now().nanoseconds() / 1000;
+    vehicle_command_pub_->publish(*req);
+    RCLCPP_INFO(this->get_logger(), "已请求降落");
 }
 
 bool OffboardControlNode::start_fly(){
     auto now = this->now();
 
-    if (!current_state_.connected)
-    {
-        RCLCPP_WARN(this->get_logger(), "等待飞控连接...");
-        return false;
+    // 1. 检查是否收到飞控状态
+    static bool received_first_odometry = false;
+    if (!received_first_odometry) {
+        if (timestamp_ == 0) {
+            RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 2000, 
+                "等待飞控连接... (检查MicroXRCEDDS Agent是否启动)");
+            return false;
+        }
+        received_first_odometry = true;
+        RCLCPP_INFO(this->get_logger(), "飞控已连接");
     }
 
+    // 2. 预热setpoint
     if (setpoint_counter_ < 100)
     {
-        publish_setpoint();
+        publish_offboard_control_mode();
+        publish_trajectory_setpoint();
         setpoint_counter_++;
         return false;
     }
 
-    if (!current_state_.armed &&
-        (now - last_request_).seconds() > 5.0 && current_state_.mode == "OFFBOARD")
-    {
-        auto req = std::make_shared<mavros_msgs::srv::CommandBool::Request>();
-        req->value = true;
-        arming_client_->async_send_request(req);
-        RCLCPP_INFO(this->get_logger(), "请求解锁...");
-        last_request_ = now;
+    // 3. 切换到OFFBOARD模式（持续发送setpoint）
+    if (!in_offboard_mode_) {
+        publish_offboard_control_mode();  // ⭐ 持续发送
+        publish_trajectory_setpoint();      // ⭐ 持续发送
+        if ((now - last_request_).seconds() > 2.0) {
+            switch_to_offboard();
+            last_request_ = now;
+        }
         return false;
     }
-    if (!current_state_.armed)
+
+    // 4. 解锁（持续发送setpoint）
+    if (!armed_) {
+        publish_offboard_control_mode();  // ⭐ 持续发送
+        publish_trajectory_setpoint();      // ⭐ 持续发送
+        if ((now - last_request_).seconds() > 2.0) {
+            arm();
+            last_request_ = now;
+        }
         return false;
+    }
     
-    return true;
+    return true;  // 已连接、已预热、已进入offboard、已解锁
 }
+
 
 void OffboardControlNode::publish_mod()
 {
