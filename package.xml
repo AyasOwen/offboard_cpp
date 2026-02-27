@@ -23,6 +23,8 @@
   <depend>tf2_ros</depend>
   <depend>tf2_geometry_msgs</depend>
   <depend>opencv</depend>
+  <depend>eigen</depend>
+  <depend>eigen3_cmake_module</depend>
 
   <!-- Test dependencies -->
   <test_depend>ament_lint_auto</test_depend>
