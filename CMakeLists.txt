@@ -30,13 +30,6 @@ include_directories(
 )
 
 # ---------------------------------------------
-# 生成自定义接口
-rosidl_generate_interfaces(${PROJECT_NAME}
-  "action/Px4Offboard.action"
-  DEPENDENCIES action_msgs geometry_msgs
-)
-
-# ---------------------------------------------
 # 构建基础控制库（包含 FSM、输入处理、参数管理）
 add_library(px4_offboard_lib
   src/lib/param.cpp

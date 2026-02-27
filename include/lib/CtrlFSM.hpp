@@ -3,6 +3,18 @@
 
 #include <lib/input.hpp>
 
+
+// 枚举 PX4 飞控模式
+// DDS 不像 Mavros 一样，发送和接收到的 Mode 类型及数值不同，需要做映射
+enum class Mode_t {
+    MANUAL,
+    ALTCTL,
+    POSCTL,
+    OFFBOARD,
+    UNKNOWN
+};
+
+
 class CtrlFSM{
 public:
     rclcpp::Node::SharedPtr node_;          // Node 指针
@@ -34,24 +46,14 @@ public:
         WANRING,        // 电量过低时自动降落
         NONE
     };
-
-    // 枚举 PX4 飞控模式
-    // DDS 不像 Mavros 一样，发送和接收到的 Mode 类型及数值不同，需要做映射
-    enum class Mode_t {
-        MANUAL,
-        ALTCTL,
-        POSCTL,
-        OFFBOARD,
-        UNKNOWN
-    };
     
     // 发布者
     rclcpp::Publisher<px4_msgs::msg::TrajectorySetpoint>::SharedPtr offboard_pub;
-    rclcpp::Publisher<px4_msgs::msg::TrajectorySetpoint>::SharedPtr trigger_pub;
+    rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr trigger_pub;
     rclcpp::Publisher<px4_msgs::msg::OffboardControlMode>::SharedPtr offboard_mode_pub;
     rclcpp::Publisher<px4_msgs::msg::VehicleCommand>::SharedPtr vehicle_com_pub;
 
-    CtrlFSM(const Param_t& param, const rclcpp::Node::SharedPtr& node);
+    CtrlFSM(Param_t& param, const rclcpp::Node::SharedPtr& node);
 
     void FSM();         // 状态机控制
 
@@ -77,9 +79,9 @@ private:
     rclcpp::Time takeoff_start_time;        // 开始 Takeoff 进程的时间
 
     void set_start_pose_for_takeoff_land();
-    void land(rclcpp::Time& now_time);                              // 降落
+    bool land(rclcpp::Time& now_time);                              // 降落
     bool arm_to_disarm(rclcpp::Time& now_time, bool arm);           // 无人机解锁 / 上锁
-    px4_msgs::msg::TrajectorySetpoint get_takeoff_des();            // 起飞
+    px4_msgs::msg::TrajectorySetpoint get_takeoff_des(rclcpp::Time& now_time);            // 起飞
 
     // 工具
     bool mode_in_progress{false};           // 标志位，判断是否在切换 Mode 进程中
@@ -89,13 +91,13 @@ private:
     rclcpp::Time altctl_start_time;         // 开始进入 ALTCTL 模式进程的时间
     rclcpp::Time position_start_time;       // 开始进入 POSITION 模式进程的时间
 
-    void get_yaw_from_odom();               // 从 Odom 中的四元数中提取出 yaw
+    double get_yaw_from_odom();             // 从 Odom 中的四元数中提取出 yaw
     float mode_to_com(Mode_t mode);         // Mode_t 映射到发送的 Param2 值
     Mode_t status_to_mode(const px4_msgs::msg::VehicleStatus& status);      // 接收到的 Mode 值映射到 Mode_t
     std::string mode_to_string(Mode_t mode);                                // 将 Mode_t 转为字符串
-    void switch_to_offboard(rclcpp::Time& now_time, bool on_off);           // 进入 / 退出 Offboard 模式
-    void switch_to_altctl(rclcpp::Time& now_time);                          // 进入定高模式
-    void switch_to_position(rclcpp::Time& now_time);                        // 进入定高模式
+    bool switch_to_offboard(rclcpp::Time& now_time, bool on_off);           // 进入 / 退出 Offboard 模式
+    bool switch_to_altctl(rclcpp::Time& now_time);                          // 进入定高模式
+    bool switch_to_position(rclcpp::Time& now_time);                        // 进入定高模式
     void set_hover_pos();                   // 根据当前 Odom 位置记录悬浮位置
     void set_offboard_mode(rclcpp::Time& now_time, bool position = true, 
         bool velocity = true, bool acceleration = false, bool attitude = false, bool body_rate = false);

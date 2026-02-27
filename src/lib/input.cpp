@@ -31,7 +31,7 @@ bool RC_Data_t::check_centered(){
 
 // 映射遥控器
 // 未完成，待修改
-void RC_Data_t::feed(px4_msgs::msg::RCChannels::SharedPtr pMsg, const Param_t& param){
+void RC_Data_t::feed(px4_msgs::msg::RcChannels::SharedPtr pMsg, const Param_t& param){
     msg = *pMsg;
     rcv_stamp =  node_ -> now();
 
@@ -234,13 +234,12 @@ Takeoff_Land_Data_t::Takeoff_Land_Data_t(const rclcpp::Node::SharedPtr& node) : 
 
 // 获取起飞信息
 void Takeoff_Land_Data_t::feed_takeoff_land(std_msgs::msg::UInt8::SharedPtr pMsg){
-    msg = *pMsg;
     rcv_stamp =  node_ -> now();
     triggered = true;
     takeoff_land_cmd = pMsg->data;
 }
 
 void Takeoff_Land_Data_t::feed_landed(px4_msgs::msg::VehicleLandDetected::SharedPtr pMsg){
-    msg = *pMsg;
+    land_msg = *pMsg;
     landed = pMsg->landed;
 }

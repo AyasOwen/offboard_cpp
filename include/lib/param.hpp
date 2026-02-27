@@ -60,8 +60,8 @@ public:
 
 private:
     // 读取静态参数的模板
-    template<typename TName, typename TVal>
-    void readStaticParam(const std::shared_ptr<rclcpp::Node>& node, TName& name, TVal& val){
+    template<typename TVal>
+    void readStaticParam(const std::shared_ptr<rclcpp::Node>& node, const std::string& name, TVal& val){
         try
         {
             val = node->declare_parameter<TVal>(name, val);

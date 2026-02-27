@@ -14,8 +14,12 @@ OffboardDemoNode::OffboardDemoNode() : Node("offboard_demo_node") {
                        .best_effort()
                        .durability_volatile();
     odom_sub_ = this->create_subscription<px4_msgs::msg::VehicleOdometry>(
-        "/offboard/trigger", qos_px4,
+        "/fmu/out/vehicle_odometry", qos_px4,
         std::bind(&OffboardDemoNode::odomCallback, this, std::placeholders::_1));
+
+    trigger_sub_ = this->create_subscription<std_msgs::msg::Bool>(
+        "/offboard/trigger", qos_px4,
+        std::bind(&OffboardDemoNode::triggerodomCallback, this, std::placeholders::_1));
     
     // 初始化状态
     mission_state_ = MissionState::IDLE;
@@ -42,127 +46,143 @@ OffboardDemoNode::OffboardDemoNode() : Node("offboard_demo_node") {
 void OffboardDemoNode::timerCallback() {
     auto now = this->now();
     double elapsed = (now - state_start_time_).seconds();
-    if ()
-    
-    switch (mission_state_) {
-        case MissionState::IDLE: {
-            // 等待5秒让系统初始化
-            if (elapsed > 5.0) {
-                RCLCPP_INFO(this->get_logger(), "开始起飞!");
-                publishTakeoffCommand();
-                mission_state_ = MissionState::TAKEOFF;
-                state_start_time_ = now;
+    if (trigger_){
+        switch (mission_state_) {
+            case MissionState::IDLE: {
+                // 等待5秒让系统初始化
+                if (elapsed > 5.0) {
+                    RCLCPP_INFO(this->get_logger(), "开始起飞!");
+                    publishTakeoffCommand();
+                    mission_state_ = MissionState::TAKEOFF;
+                    state_start_time_ = now;
+                }
+                break;
             }
-            break;
-        }
-        
-        case MissionState::TAKEOFF: {
-            // 持续发送起飞命令和位置控制模式
-            publishControlMode(true, false, false);
-            publishCommand(0.0, 0.0, takeoff_height_, 0.0);  // 起飞到1.5米高度
             
-            // 检查是否到达起飞高度
-            if (position_received_ && reachedTarget(0.0, 0.0, takeoff_height_)) {
-                RCLCPP_INFO(this->get_logger(), "起飞完成，开始飞向航点1");
-                mission_state_ = MissionState::WAYPOINT_1;
-                state_start_time_ = now;
-            } 
-            else if (elapsed > 15.0) {
-                // 超时保护
-                RCLCPP_WARN(this->get_logger(), "起飞超时，强制进入下一状态");
-                mission_state_ = MissionState::WAYPOINT_1;
-                state_start_time_ = now;
+            case MissionState::TAKEOFF: {
+                // 持续发送起飞命令和位置控制模式
+                publishControlMode(true, false, false);
+                publishCommand(0.0, 0.0, takeoff_height_, 0.0);  // 起飞到1.5米高度
+                
+                // 检查是否到达起飞高度
+                if (position_received_ && reachedTarget(0.0, 0.0, takeoff_height_)) {
+                    RCLCPP_INFO(this->get_logger(), "起飞完成，开始飞向航点1");
+                    mission_state_ = MissionState::WAYPOINT_1;
+                    state_start_time_ = now;
+                } 
+                else if (elapsed > 15.0) {
+                    // 超时保护
+                    RCLCPP_WARN(this->get_logger(), "起飞超时，强制进入下一状态");
+                    mission_state_ = MissionState::WAYPOINT_1;
+                    state_start_time_ = now;
+                }
+                break;
             }
-            break;
-        }
-        
-        case MissionState::WAYPOINT_1: {
-            auto& wp = waypoints_[0];
-            publishControlMode(true, false, false);
-            publishCommand(wp[0], wp[1], wp[2], wp[3]);
             
-            if (position_received_ && reachedTarget(wp[0], wp[1], wp[2])) {
-                RCLCPP_INFO(this->get_logger(), "到达航点1，飞向航点2");
-                mission_state_ = MissionState::WAYPOINT_2;
-                state_start_time_ = now;
-            } 
-            else if (elapsed > 15.0) {
-                RCLCPP_WARN(this->get_logger(), "航点1超时，强制进入下一状态");
-                mission_state_ = MissionState::WAYPOINT_2;
-                state_start_time_ = now;
+            case MissionState::WAYPOINT_1: {
+                auto& wp = waypoints_[0];
+                publishControlMode(true, false, false);
+                publishCommand(wp[0], wp[1], wp[2], wp[3]);
+                
+                if (position_received_ && reachedTarget(wp[0], wp[1], wp[2])) {
+                    RCLCPP_INFO(this->get_logger(), "到达航点1，飞向航点2");
+                    mission_state_ = MissionState::WAYPOINT_2;
+                    state_start_time_ = now;
+                } 
+                else if (elapsed > 15.0) {
+                    RCLCPP_WARN(this->get_logger(), "航点1超时，强制进入下一状态");
+                    mission_state_ = MissionState::WAYPOINT_2;
+                    state_start_time_ = now;
+                }
+                break;
             }
-            break;
-        }
-        
-        case MissionState::WAYPOINT_2: {
-            auto& wp = waypoints_[1];
-            publishControlMode(true, false, false);
-            publishCommand(wp[0], wp[1], wp[2], wp[3]);
             
-            if (position_received_ && reachedTarget(wp[0], wp[1], wp[2])) {
-                RCLCPP_INFO(this->get_logger(), "到达航点2，飞向航点3");
-                mission_state_ = MissionState::WAYPOINT_3;
-                state_start_time_ = now;
-            } 
-            else if (elapsed > 15.0) {
-                RCLCPP_WARN(this->get_logger(), "航点2超时，强制进入下一状态");
-                mission_state_ = MissionState::WAYPOINT_3;
-                state_start_time_ = now;
+            case MissionState::WAYPOINT_2: {
+                auto& wp = waypoints_[1];
+                publishControlMode(true, false, false);
+                publishCommand(wp[0], wp[1], wp[2], wp[3]);
+                
+                if (position_received_ && reachedTarget(wp[0], wp[1], wp[2])) {
+                    RCLCPP_INFO(this->get_logger(), "到达航点2，飞向航点3");
+                    mission_state_ = MissionState::WAYPOINT_3;
+                    state_start_time_ = now;
+                } 
+                else if (elapsed > 15.0) {
+                    RCLCPP_WARN(this->get_logger(), "航点2超时，强制进入下一状态");
+                    mission_state_ = MissionState::WAYPOINT_3;
+                    state_start_time_ = now;
+                }
+                break;
             }
-            break;
-        }
-        
-        case MissionState::WAYPOINT_3: {
-            auto& wp = waypoints_[2];
-            publishControlMode(true, false, false);
-            publishCommand(wp[0], wp[1], wp[2], wp[3]);
             
-            if (position_received_ && reachedTarget(wp[0], wp[1], wp[2])) {
-                RCLCPP_INFO(this->get_logger(), "到达航点3，飞向航点4");
-                mission_state_ = MissionState::WAYPOINT_4;
-                state_start_time_ = now;
-            } 
-            else if (elapsed > 15.0) {
-                RCLCPP_WARN(this->get_logger(), "航点3超时，强制进入下一状态");
-                mission_state_ = MissionState::WAYPOINT_4;
-                state_start_time_ = now;
+            case MissionState::WAYPOINT_3: {
+                auto& wp = waypoints_[2];
+                publishControlMode(true, false, false);
+                publishCommand(wp[0], wp[1], wp[2], wp[3]);
+                
+                if (position_received_ && reachedTarget(wp[0], wp[1], wp[2])) {
+                    RCLCPP_INFO(this->get_logger(), "到达航点3，飞向航点4");
+                    mission_state_ = MissionState::WAYPOINT_4;
+                    state_start_time_ = now;
+                } 
+                else if (elapsed > 15.0) {
+                    RCLCPP_WARN(this->get_logger(), "航点3超时，强制进入下一状态");
+                    mission_state_ = MissionState::WAYPOINT_4;
+                    state_start_time_ = now;
+                }
+                break;
             }
-            break;
-        }
-        
-        case MissionState::WAYPOINT_4: {
-            auto& wp = waypoints_[3];
-            publishControlMode(true, false, false);
-            publishCommand(wp[0], wp[1], wp[2], wp[3]);
             
-            if (position_received_ && reachedTarget(wp[0], wp[1], wp[2])) {
-                RCLCPP_INFO(this->get_logger(), "完成方形飞行，准备降落");
-                mission_state_ = MissionState::LAND;
-                state_start_time_ = now;
-            } 
-            else if (elapsed > 15.0) {
-                RCLCPP_WARN(this->get_logger(), "航点4超时，强制进入降落状态");
-                mission_state_ = MissionState::LAND;
-                state_start_time_ = now;
+            case MissionState::WAYPOINT_4: {
+                auto& wp = waypoints_[3];
+                publishControlMode(true, false, false);
+                publishCommand(wp[0], wp[1], wp[2], wp[3]);
+                
+                if (position_received_ && reachedTarget(wp[0], wp[1], wp[2])) {
+                    RCLCPP_INFO(this->get_logger(), "完成方形飞行，准备降落");
+                    mission_state_ = MissionState::LAND;
+                    state_start_time_ = now;
+                } 
+                else if (elapsed > 15.0) {
+                    RCLCPP_WARN(this->get_logger(), "航点4超时，强制进入降落状态");
+                    mission_state_ = MissionState::LAND;
+                    state_start_time_ = now;
+                }
+                break;
             }
-            break;
-        }
-        
-        case MissionState::LAND: {
-            RCLCPP_INFO(this->get_logger(), "发送降落命令");
-            publishLandCommand();
-            mission_state_ = MissionState::DONE;
-            state_start_time_ = now;
-            break;
-        }
-        
-        case MissionState::DONE: {
-            // 任务完成，停止发布
-            if (elapsed < 2.0) {
-                RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 1000,
-                    "任务完成！");
+
+            case MissionState::RETURN_HOME: {
+                publishControlMode(true, false, false);
+                publishCommand(0.0, 0.0, takeoff_height_, 0.0);
+
+                if (position_received_ && reachedTarget(0.0, 0.0, takeoff_height_)) {
+                    RCLCPP_INFO(this->get_logger(), "返回起点完成，准备降落");
+                    mission_state_ = MissionState::LAND;
+                    state_start_time_ = now;
+                } else if (elapsed > 15.0) {
+                    RCLCPP_WARN(this->get_logger(), "返回起点超时，强制进入降落状态");
+                    mission_state_ = MissionState::LAND;
+                    state_start_time_ = now;
+                }
+                break;
             }
-            break;
+            
+            case MissionState::LAND: {
+                RCLCPP_INFO(this->get_logger(), "发送降落命令");
+                publishLandCommand();
+                mission_state_ = MissionState::DONE;
+                state_start_time_ = now;
+                break;
+            }
+            
+            case MissionState::DONE: {
+                // 任务完成，停止发布
+                if (elapsed < 2.0) {
+                    RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 1000,
+                        "任务完成！");
+                }
+                break;
+            }
         }
     }
 }
@@ -223,6 +243,10 @@ void OffboardDemoNode::odomCallback(const px4_msgs::msg::VehicleOdometry::Shared
     current_position_[1] = msg->position[1];
     current_position_[2] = msg->position[2];
     position_received_ = true;
+}
+
+void OffboardDemoNode::triggerodomCallback(const std_msgs::msg::Bool::SharedPtr msg) {
+    trigger_ = msg->data;
 }
 
 bool OffboardDemoNode::reachedTarget(double target_x, double target_y, double target_z) {

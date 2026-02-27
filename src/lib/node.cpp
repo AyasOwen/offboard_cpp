@@ -12,7 +12,7 @@ OffboardControlNode::OffboardControlNode() : Node("offboard_control_node"){
     // 初始化发布者
     fsm->offboard_pub = this->create_publisher<px4_msgs::msg::TrajectorySetpoint>(
         "/fmu/in/trajectory_setpoint", qos_px4);
-    fsm->trigger_pub = this->create_publisher<px4_msgs::msg::TrajectorySetpoint>(
+    fsm->trigger_pub = this->create_publisher<std_msgs::msg::Bool>(
         "/offboard/trigger", qos_px4);
     fsm->offboard_mode_pub = this->create_publisher<px4_msgs::msg::OffboardControlMode>(
         "/fmu/in/offboard_control_mode", qos_px4);
@@ -32,9 +32,9 @@ OffboardControlNode::OffboardControlNode() : Node("offboard_control_node"){
             fsm->state_data.feed(msg);
         });
 
-    rc_sub = this->create_subscription<px4_msgs::msg::RCChannels>(
+    rc_sub = this->create_subscription<px4_msgs::msg::RcChannels>(
         "/fmu/out/rc_channels", qos_px4, 
-        [this](px4_msgs::msg::RCChannels::SharedPtr msg) {
+        [this](px4_msgs::msg::RcChannels::SharedPtr msg) {
             fsm->rc_data.feed(msg, param);
         });
 

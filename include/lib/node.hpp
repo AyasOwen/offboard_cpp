@@ -14,7 +14,7 @@ private:
     std::unique_ptr<CtrlFSM> fsm;
 
     // 订阅器
-    rclcpp::Subscription<px4_msgs::msg::RCChannels>::SharedPtr rc_sub;
+    rclcpp::Subscription<px4_msgs::msg::RcChannels>::SharedPtr rc_sub;
     rclcpp::Subscription<px4_msgs::msg::VehicleOdometry>::SharedPtr odom_sub;
     rclcpp::Subscription<px4_msgs::msg::VehicleStatus>::SharedPtr state_sub;
     rclcpp::Subscription<px4_msgs::msg::TrajectorySetpoint>::SharedPtr offboard_sub;

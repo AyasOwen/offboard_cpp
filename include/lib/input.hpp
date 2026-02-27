@@ -17,6 +17,7 @@
 #include <limits>
 
 #include <std_msgs/msg/u_int8.hpp>
+#include <std_msgs/msg/bool.hpp>
 #include <px4_msgs/msg/vehicle_odometry.hpp>
 #include <px4_msgs/msg/vehicle_status.hpp>
 #include "px4_msgs/msg/vehicle_command.hpp"
@@ -51,7 +52,7 @@ public:
     double ch[4];                           // 摇杆映射
 
     rclcpp::Time rcv_stamp;                 // 接收时间戳
-    px4_msgs::msg::RCChannels msg;
+    px4_msgs::msg::RcChannels msg;
 
     bool is_hover_mode;                     // 是否悬浮
     bool enter_hover_mode;                  // 是否进入悬浮
@@ -66,7 +67,7 @@ public:
     RC_Data_t(const rclcpp::Node::SharedPtr& node);
     void check_validity();                  // 检查数据有效性
     bool check_centered();                  // 建成摇杆是否回正
-    void feed(px4_msgs::msg::RCChannels::SharedPtr pMsg, const Param_t& param);       // 回调
+    void feed(px4_msgs::msg::RcChannels::SharedPtr pMsg, const Param_t& param);       // 回调
 };
 
 // Odom 信息
@@ -158,7 +159,6 @@ public:
     uint8_t takeoff_land_cmd{0};    // 0: none, 1: takeoff, 2: land
     bool landed;                    // 是否到达地面
 
-    std_msgs::msg::UInt8 takeoff_land_msg;
     px4_msgs::msg::VehicleLandDetected land_msg;
     rclcpp::Time rcv_stamp;         // 时间戳
 

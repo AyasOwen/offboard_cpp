@@ -6,6 +6,7 @@
 #include <px4_msgs/msg/offboard_control_mode.hpp>
 #include <px4_msgs/msg/vehicle_odometry.hpp>
 #include <std_msgs/msg/u_int8.hpp>
+#include <std_msgs/msg/bool.hpp>
 #include <vector>
 #include <cmath>
 
@@ -20,6 +21,9 @@ public:
     OffboardDemoNode();
 
 private:
+    // 触发器
+    bool trigger_ = false;
+
     // 发布者
     rclcpp::Publisher<px4_msgs::msg::TrajectorySetpoint>::SharedPtr cmd_pub_;
     rclcpp::Publisher<px4_msgs::msg::OffboardControlMode>::SharedPtr cmd_mode_pub_;
@@ -27,6 +31,7 @@ private:
     
     // 订阅者
     rclcpp::Subscription<px4_msgs::msg::VehicleOdometry>::SharedPtr odom_sub_;
+    rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr trigger_sub_;
     
     // 定时器
     rclcpp::TimerBase::SharedPtr timer_;
@@ -61,6 +66,7 @@ private:
     // 回调函数
     void timerCallback();
     void odomCallback(const px4_msgs::msg::VehicleOdometry::SharedPtr msg);
+    void triggerodomCallback(const std_msgs::msg::Bool::SharedPtr msg);
     
     // 辅助函数
     bool reachedTarget(double target_x, double target_y, double target_z);

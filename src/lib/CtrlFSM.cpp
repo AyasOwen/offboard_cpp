@@ -28,9 +28,9 @@
 */
 
 
-CtrlFSM::CtrlFSM(const Param_t& param, const rclcpp::Node::SharedPtr& node)
-:   param_(param), 
-    node_(node), 
+CtrlFSM::CtrlFSM(Param_t& param, const rclcpp::Node::SharedPtr& node)
+:   node_(node),
+    param_(param), 
     rc_data(node),
     odom_data(node),
     state_data(node),
@@ -49,8 +49,14 @@ void CtrlFSM::FSM(){
     // 获取当前时间戳
     rclcpp::Time now_time = node_ -> now();
 
-    px4_msgs::msg::TrajectorySetpoint des = odom_data.msg;
+    px4_msgs::msg::TrajectorySetpoint des;
     px4_msgs::msg::OffboardControlMode mode;
+    std_msgs::msg::Bool trigger_flag;      // 用于触发 OFFBOARD 的消息，1 表示触发，0 表示不触发
+
+    des.position[0] = odom_data.msg.position[0];
+    des.position[1] = odom_data.msg.position[1];
+    des.position[2] = odom_data.msg.position[2];
+    des.yaw = get_yaw_from_odom();
 
     mode.position = true;
     mode.velocity = true;
@@ -149,11 +155,11 @@ void CtrlFSM::FSM(){
                         break;
                     }
                 }
-                takeoff_start_time = now_time;
+
                 set_start_pose_for_takeoff_land();
                 if(switch_to_offboard(now_time, true)){
                     if(param_.takeoff_land.enable_arm){
-                        takeoff_land.toggle_takeoff_land_time = now_time;
+                        takeoff_start_time = now_time;
                         if(arm_to_disarm(now_time, true)){
                             state = AUTO_TAKEOFF;
                             RCLCPP_INFO(node_->get_logger(), "进入自动起飞模式！");
@@ -188,8 +194,9 @@ void CtrlFSM::FSM(){
 
             else{
                 des = get_hover_des(now_time);
-                if (rc_data.enter_command_mode || (delay_trigger.first && now_time > delay_trigger.second)){
-                    trigger_pub->publish(odom_data.msg);
+                if (rc_data.enter_offboard || (delay_trigger.first && now_time > delay_trigger.second)){
+                    trigger_flag.data = true;
+                    trigger_pub->publish(trigger_flag);
                 }
             }
             break;
@@ -200,12 +207,16 @@ void CtrlFSM::FSM(){
             if (!rc_data.is_hover_mode || !odom_is_received(now_time)){
                 RCLCPP_WARN(node_->get_logger(), "返回 POSITION 模式！");
                 state = POSITION;
+                trigger_flag.data = false;
+                trigger_pub->publish(trigger_flag);
                 switch_to_offboard(now_time, false);
             }
             // 遥控器离开 OFFBOARD 模式或外部停止发送命令
             else if (!rc_data.is_offboard || !offboard_is_received(now_time)){
                 state = AUTO_HOVER;
                 RCLCPP_WARN(node_->get_logger(), "返回 AUTO_HOVER 模式！");
+                trigger_flag.data = false;
+                trigger_pub->publish(trigger_flag);
                 set_hover_pos();
                 des = get_hover_des(now_time);
             }
@@ -390,7 +401,7 @@ void CtrlFSM::publish_vehicle_command(rclcpp::Time& now_time, uint16_t command, 
     msg.source_component = 1;
     msg.from_external = true;
     msg.timestamp = now_time.nanoseconds() / 1000;
-    vehicle_command_pub -> publish(msg);
+    vehicle_com_pub -> publish(msg);
 }
 
 double CtrlFSM::get_yaw_from_odom(){
@@ -570,7 +581,7 @@ bool CtrlFSM::switch_to_offboard(rclcpp::Time& now_time, bool on_off){
         publish_vehicle_command(now_time, px4_msgs::msg::VehicleCommand::VEHICLE_CMD_DO_SET_MODE, 1, mode_to_com(Mode_t::OFFBOARD));
     }
     else{
-        publish_vehicle_command(now_time, px4_msgs::msg::VehicleCommand::VEHICLE_CMD_DO_SET_MODE, 1, mode_to_com(status_to_mode(state_data.state_before_offboard.nav_state)));
+        publish_vehicle_command(now_time, px4_msgs::msg::VehicleCommand::VEHICLE_CMD_DO_SET_MODE, 1, mode_to_com(status_to_mode(state_data.state_before_offboard)));
     }
     mode_in_progress = true;
     return false;
