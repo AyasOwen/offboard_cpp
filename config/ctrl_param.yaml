@@ -1,0 +1,35 @@
+/**:
+  ros__parameters:
+    # 消息超时设置 (单位: 秒)
+    msg_timeout:
+      rc: 0.5             # 遥控器信号超时
+      odom: 0.5           # 里程计 (T265/VIO) 超时
+      offboard: 0.5       # Offboard 控制指令频率检查
+      offboardMode: 0.5   # Offboard 模式反馈超时
+      bat: 0.5            # 电池状态回调超时
+
+    # 自动起飞与降落设置
+    takeoff_land:
+      enable: true        # 是否启用自动起降逻辑
+      enable_arm: true    # 起飞前是否由脚本自动执行 Arm (解锁)
+      speed: 0.3          # 起飞/降落的垂直速度 (m/s)
+      height: 1.0         # 目标起飞高度 (m)
+
+    # 安全阈值与保护
+    low_voltage: 13.2     # 低电压报警阈值 (针对 4S 电池)
+    odom_pos_jump: 0.3    # 里程计位置跳变容忍度 (米)，超过此值触发异常保护
+
+    # 遥控器 (RC) 调试与通道映射
+    rc_debug:
+      # 通道映射 (根据你的遥控器设置进行修改，通常 5, 6, 7, 8 为开关通道)
+      ch_p: 5             # 用于动态调节 P 参数的通道
+      ch_i: 6             # 用于动态调节 I 参数的通道
+      ch_d: 7             # 用于动态调节 D 参数的通道
+      ch_mode: 8          # 模式切换通道 (悬浮模式)
+      ch_gear: 9          # 档位切换通道 (Offboard 模式)
+
+      # 初始控制参数 (这些是你在 DynamicParamNode 中声明的动态参数)
+      # 程序启动时会首先读取这里的数值
+      p: 1.5              # 默认比例系数
+      i: 0.01             # 默认积分系数
+      d: 0.15             # 默认微分系数

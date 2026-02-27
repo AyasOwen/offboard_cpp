@@ -17,6 +17,7 @@ find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
 find_package(OpenCV REQUIRED)
+find_package(Eigen3 REQUIRED)
 # 接口定义依赖包
 find_package(rosidl_default_generators REQUIRED)
 find_package(action_msgs REQUIRED)
@@ -25,6 +26,7 @@ find_package(action_msgs REQUIRED)
 include_directories(
   include
   ${OpenCV_INCLUDE_DIRS}
+  ${EIGEN3_INCLUDE_DIRS}
 )
 
 # ---------------------------------------------
@@ -35,17 +37,20 @@ rosidl_generate_interfaces(${PROJECT_NAME}
 )
 
 # ---------------------------------------------
-# 构建基础类 OffboardControlNode 为库
-add_library(offboard_control_node_lib
-  src/lib/offboard_control_node.cpp
+# 构建基础控制库（包含 FSM、输入处理、参数管理）
+add_library(px4_offboard_lib
+  src/lib/param.cpp
+  src/lib/input.cpp
+  src/lib/CtrlFSM.cpp
+  src/lib/node.cpp
 )
 
-target_include_directories(offboard_control_node_lib PUBLIC
+target_include_directories(px4_offboard_lib PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>
 )
 
-ament_target_dependencies(offboard_control_node_lib
+ament_target_dependencies(px4_offboard_lib
   rclcpp
   std_msgs
   px4_msgs
@@ -54,48 +59,19 @@ ament_target_dependencies(offboard_control_node_lib
   tf2_geometry_msgs
 )
 
-target_link_libraries(offboard_control_node_lib
+target_link_libraries(px4_offboard_lib
   ${OpenCV_LIBS}
+  Eigen3::Eigen
 )
 
 # ---------------------------------------------
-# 构建基础类 OffboardActionNode 为库
-add_library(offboard_action_node_lib
-  src/lib/offboard_action_node.cpp
-)
-
-target_include_directories(offboard_action_node_lib PUBLIC
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-  $<INSTALL_INTERFACE:include>
-)
-
-ament_target_dependencies(offboard_action_node_lib
-  rclcpp
-  rclcpp_action 
-  std_msgs
-  px4_msgs
-  tf2
-  tf2_ros
-  tf2_geometry_msgs
-)
-
-target_link_libraries(offboard_action_node_lib
-  ${PROJECT_NAME}__rosidl_typesupport_cpp
-  ${OpenCV_LIBS}
-)
-
-add_dependencies(offboard_action_node_lib
-  ${PROJECT_NAME}__rosidl_typesupport_cpp
-)
-
-# ---------------------------------------------
-# 主测试节点：offboard_node
+# 主控制节点：offboard_node（运行状态机）
 add_executable(offboard_node
-  src/offboard_demo.cpp
+  src/main.cpp
 )
 
 target_link_libraries(offboard_node
-  offboard_control_node_lib
+  px4_offboard_lib
 )
 
 ament_target_dependencies(offboard_node
@@ -104,25 +80,38 @@ ament_target_dependencies(offboard_node
 )
 
 # ---------------------------------------------
-# 子节点 1：2025_Ti_main_node
-add_executable(2025_Ti_main_node
-  src/2025_Ti_main.cpp
+# Demo 节点：发布简单轨迹给 offboard_node
+add_executable(offboard_demo
+  src/offboard_demo.cpp
 )
 
-target_link_libraries(2025_Ti_main_node
-  offboard_control_node_lib
+target_link_libraries(offboard_demo
+  px4_offboard_lib
 )
 
-ament_target_dependencies(2025_Ti_main_node
+ament_target_dependencies(offboard_demo
   rclcpp
   std_msgs
+  px4_msgs
 )
 
-# 安装所有可执行文件
+# 安装可执行文件
 install(TARGETS
   offboard_node
-  2025_Ti_main_node
+  offboard_demo
   DESTINATION lib/${PROJECT_NAME}
+)
+
+# 安装 launch 文件
+install(DIRECTORY
+  launch
+  DESTINATION share/${PROJECT_NAME}/
+)
+
+# 安装配置文件
+install(DIRECTORY
+  config
+  DESTINATION share/${PROJECT_NAME}/
 )
 
 ament_package()
