@@ -29,6 +29,14 @@ include_directories(
   ${EIGEN3_INCLUDE_DIRS}
 )
 
+# 编译时宏定义
+# 没有遥控器时测试 RC 用
+# add_compile_definitions(TEXT_RC)
+# 处理机体坐标系速度，如果 Odom 里的速度是相对于机体坐标系的，需要旋转到世界坐标系
+# add_compile_definitions(VEL_IN_BODY)
+# 打印外部命令时间戳用
+# add_compile_definitions(TEXT_OFFBOARD)
+
 # ---------------------------------------------
 # 构建基础控制库（包含 FSM、输入处理、参数管理）
 add_library(px4_offboard_lib

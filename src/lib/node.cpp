@@ -6,7 +6,10 @@ OffboardControlNode::OffboardControlNode() : Node("offboard_control_node"){
 void OffboardControlNode::init(const std::shared_ptr<OffboardControlNode>& self) {
     // 获取参数配置
     param.getStaticParam(self);
-    
+    #ifdef TEXT_RC
+    this->declare_parameter("mock_rc_mode", 0.0);
+    this->declare_parameter("mock_rc_gear", 0.0);
+    #endif
     // 创建状态机
     fsm = std::make_unique<CtrlFSM>(param, self);
 

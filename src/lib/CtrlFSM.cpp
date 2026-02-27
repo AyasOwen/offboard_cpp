@@ -321,7 +321,7 @@ void CtrlFSM::FSM(){
     }
 
     if (battery_is_received(now_time)){
-        if (battery_data.warning >= 2 || battery_data.percentage < 0.15 || battery_data.volt < param_.low_voltage){
+        if (battery_data.volt > 1.0 && (battery_data.warning >= 2 || battery_data.percentage < 0.15 || battery_data.volt < param_.low_voltage)){
             RCLCPP_WARN(node_->get_logger(), "电量过低，当前电量：%f，准备紧急降落！", battery_data.volt);
             state = WANRING;
         }
@@ -350,7 +350,14 @@ bool CtrlFSM::odom_is_received(rclcpp::Time& now_time){
 
 // 判断 Offboard 数据是否有效
 bool CtrlFSM::offboard_is_received(rclcpp::Time& now_time){
+    // 调试打印：看看这两个时间到底是多少
+    #if TEXT_OFFBOARD
+    RCLCPP_INFO(node_->get_logger(),
+        "Now: %.3f, Rcv: %.3f, Diff: %.3f", 
+        now_time.seconds(), offboard_data.rcv_stamp.seconds(), (now_time - offboard_data.rcv_stamp).seconds());
+    #endif
     return (now_time - offboard_data.rcv_stamp).seconds() < param_.msg_timeout.offboard;
+    
 }
 
 // 判断 OffboardMode 数据是否有效

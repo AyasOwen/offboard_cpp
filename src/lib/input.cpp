@@ -30,7 +30,6 @@ bool RC_Data_t::check_centered(){
 }
 
 // 映射遥控器
-// 未完成，待修改
 void RC_Data_t::feed(px4_msgs::msg::RcChannels::SharedPtr pMsg, const Param_t& param){
     msg = *pMsg;
     rcv_stamp =  node_ -> now();
@@ -53,6 +52,14 @@ void RC_Data_t::feed(px4_msgs::msg::RcChannels::SharedPtr pMsg, const Param_t& p
 
     mode = ((double)msg.channels[param.rc_debug.ch_mode] - 1000.0) / 1000.0;
     gear = ((double)msg.channels[param.rc_debug.ch_gear] - 1000.0) / 1000.0;
+    #ifdef TEXT_RC
+        double mock_mode = 0.0;
+        double mock_gear = 0.0;
+        node_->get_parameter_or("mock_rc_mode", mock_mode, 0.0);
+        node_->get_parameter_or("mock_rc_gear", mock_gear, 0.0);
+        mode = mock_mode;
+        gear = mock_gear;
+    #endif
     // 这里归一到了 [0, 1] ，如有别的需求，自行进行修改
     p = ((double)msg.channels[param.rc_debug.ch_p] - 1000.0) / 1000.0;
     i = ((double)msg.channels[param.rc_debug.ch_i] - 1000.0) / 1000.0;
