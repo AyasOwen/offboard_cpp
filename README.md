@@ -18,63 +18,63 @@ PX4 无人机 Offboard 模式底层控制(C++)
 
 - 固件下载
 
-  ```bash
-  git clone -b v1.14.3 git@github.com:PX4/PX4-Autopilot.git
-  ```
+```bash
+git clone -b v1.14.3 git@github.com:PX4/PX4-Autopilot.git
+```
 
 - 需要修改该配置文件: `PX4-Autopilot/src/modules/uxrce_dds_client/dds_topics.yaml`
 
-  ```yaml
-  publications:
-    # ... 保留原有内容 ...
-    # 添加以下内容
-    - topic: /fmu/out/battery_status
-      type: px4_msgs::msg::BatteryStatus
+```yaml
+publications:
+  # ... 保留原有内容 ...
+  # 添加以下内容
+  - topic: /fmu/out/battery_status
+    type: px4_msgs::msg::BatteryStatus
 
-    - topic: /fmu/out/rc_channels
-      type: px4_msgs::msg::RcChannels
+  - topic: /fmu/out/rc_channels
+    type: px4_msgs::msg::RcChannels
 
-    - topic: /fmu/out/vehicle_land_detected
-      type: px4_msgs::msg::VehicleLandDetected
-  ```
+  - topic: /fmu/out/vehicle_land_detected
+    type: px4_msgs::msg::VehicleLandDetected
+```
 
 - 编译
 
-  ```bash
-  # 进入 conda 环境
-  # 默认已经下好所有前置
-  conda activate ros2
-  sudo apt install proxychains4
-  sudo apt-get install git
+```bash
+# 进入 conda 环境
+# 默认已经下好所有前置
+conda activate ros2
+sudo apt install proxychains4
+sudo apt-get install git
 
-  cd ./PX4-Autopilot/
-  # 补全子模块
-  git submodule update --init –recursive
+cd ./PX4-Autopilot/
+# 补全子模块
+git submodule update --init –recursive
 
-  # 安装依赖
-  sudo apt install ros-dev-tools
-  cd ./Tools/setup
+# 安装依赖
+sudo apt install ros-dev-tools
+cd ./Tools/setup
 
-  # 修改 requirements.txt 文件内容
-  vim ./requirements.txt
-  # 将 matplotlit>=3.0.*改为 3.0.1或3.0.0
-  # 保存退出
+# 修改 requirements.txt 文件内容
+vim ./requirements.txt
+# 将 matplotlit>=3.0.*改为 3.0.1或3.0.0
+# 保存退出
 
-  chmod +x ubuntu.sh
-  ./ubuntu.sh
+chmod +x ubuntu.sh
+./ubuntu.sh
 
-  # 编译
-  cd ~/px4/PX4-Autopilot/
-  # chmod +x Tools/check_submodules.sh
-  # chmod +x Tools/simulation/gazebo-classic/*.sh
+# 编译
+cd ~/px4/PX4-Autopilot/
+# chmod +x Tools/check_submodules.sh
+# chmod +x Tools/simulation/gazebo-classic/*.sh
 
-  # 编译你所需的版本
-  # 仿真用
-  # make px4_sitl gazebo-classic
+# 编译你所需的版本
+# 仿真用
+# make px4_sitl gazebo-classic
 
-  # 实机用
-  make px4_fmu-v3_default
-  ```
+# 实机用
+make px4_fmu-v3_default
+```
 
 ## FSM 有限状态机框架图
 
