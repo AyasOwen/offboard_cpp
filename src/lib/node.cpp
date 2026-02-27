@@ -1,8 +1,14 @@
 #include <lib/node.hpp>
 
 OffboardControlNode::OffboardControlNode() : Node("offboard_control_node"){
-    param.getStaticParam(this->shared_from_this());
-    fsm = std::make_unique<CtrlFSM>(param, this->shared_from_this());
+}
+
+void OffboardControlNode::init(const std::shared_ptr<OffboardControlNode>& self) {
+    // 获取参数配置
+    param.getStaticParam(self);
+    
+    // 创建状态机
+    fsm = std::make_unique<CtrlFSM>(param, self);
 
     // 定义 QoS 策略
     auto qos_px4 = rclcpp::QoS(rclcpp::KeepLast(1))

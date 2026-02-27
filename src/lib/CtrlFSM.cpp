@@ -324,7 +324,6 @@ void CtrlFSM::FSM(){
         if (battery_data.warning >= 2 || battery_data.percentage < 0.15 || battery_data.volt < param_.low_voltage){
             RCLCPP_WARN(node_->get_logger(), "电量过低，当前电量：%f，准备紧急降落！", battery_data.volt);
             state = WANRING;
-
         }
         else if(battery_data.volt < param_.low_voltage * 1.15 + 0.5){
             RCLCPP_WARN_THROTTLE(node_->get_logger(), *node_->get_clock(), 5000, "当前电量：%f", battery_data.volt);

@@ -7,6 +7,7 @@
 class OffboardControlNode : public rclcpp::Node {
 public:
     OffboardControlNode();
+    void init(const std::shared_ptr<OffboardControlNode>& self);
 
 private:
 
