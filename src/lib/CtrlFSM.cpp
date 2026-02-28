@@ -49,8 +49,8 @@ void CtrlFSM::FSM(){
     // 获取当前时间戳
     rclcpp::Time now_time = node_ -> now();
 
-    px4_msgs::msg::TrajectorySetpoint des;
-    px4_msgs::msg::OffboardControlMode mode;
+    px4_msgs::msg::TrajectorySetpoint des{};
+    px4_msgs::msg::OffboardControlMode mode{};
     std_msgs::msg::Bool trigger_flag;      // 用于触发 OFFBOARD 的消息，1 表示触发，0 表示不触发
 
     des.position[0] = odom_data.msg.position[0];
@@ -142,8 +142,8 @@ void CtrlFSM::FSM(){
                     RCLCPP_WARN(node_->get_logger(), "速度=%fm/s，拒绝起飞！", odom_data.v.norm());
                     break;
                 }
-                if (!takeoff_land_data.landed){
-                    RCLCPP_WARN(node_->get_logger(), "检测到无人机为着陆，拒绝起飞！");
+                if (!landed){
+                    RCLCPP_WARN(node_->get_logger(), "检测到无人机未着陆，拒绝起飞！");
                     break;
                 }
 
@@ -296,6 +296,7 @@ void CtrlFSM::FSM(){
                 else{
                     des = get_hover_des(now_time);
                     if (now_time.seconds() - warn_count > 3.0){
+                        set_start_pose_for_takeoff_land();
                         if (land(now_time)){
                             state = NONE;
                             warn_hov_once = true;
@@ -320,9 +321,12 @@ void CtrlFSM::FSM(){
         }
     }
 
+    land_detector(des, now_time);
+
     if (battery_is_received(now_time)){
-        if (battery_data.volt > 1.0 && (battery_data.warning >= 2 || battery_data.percentage < 0.15 || battery_data.volt < param_.low_voltage)){
+        if (battery_data.volt > 1.0 && battery_data.percentage > 0 && (battery_data.warning >= 2 || battery_data.percentage < 0.15 || battery_data.volt < param_.low_voltage)){
             RCLCPP_WARN(node_->get_logger(), "电量过低，当前电量：%f，准备紧急降落！", battery_data.volt);
+            set_start_pose_for_takeoff_land();
             state = WANRING;
         }
         else if(battery_data.volt < param_.low_voltage * 1.15 + 0.5){
@@ -481,7 +485,7 @@ bool CtrlFSM::land(rclcpp::Time& now_time){
     // 如果已有请求在进行
     if (land_in_progress){
         // 成功判断
-        if (takeoff_land_data.landed){
+        if (takeoff_land_data.landed || landed){
             RCLCPP_INFO(node_->get_logger(), "成功着陆！");
             land_in_progress = false;
             return true;
@@ -505,6 +509,54 @@ bool CtrlFSM::land(rclcpp::Time& now_time){
     return false;
 }
 
+// 检测是否着陆
+void CtrlFSM::land_detector(const px4_msgs::msg::TrajectorySetpoint& des, const rclcpp::Time& now_time){
+    static State_t last_state = POSITION;
+    if (last_state == POSITION && state != POSITION){
+        landed = false;
+    }
+    last_state = state;
+
+    if (state == POSITION &&
+        state_data.current_state.arming_state != px4_msgs::msg::VehicleStatus::ARMING_STATE_ARMED){
+        landed = true;
+        return;
+    }
+
+    constexpr double POSITION_DEVIATION_C = -0.5;
+    constexpr double VELOCITY_THR_C = 0.1;
+    constexpr double TIME_KEEP_C = 3.0;
+
+    static rclcpp::Time time_C12_reached(0, 0, RCL_ROS_TIME);
+    static bool time_initialized = false;
+    static bool is_last_C12_satisfy = false;
+
+    if (!time_initialized || time_C12_reached.get_clock_type() != now_time.get_clock_type()){
+        time_C12_reached = now_time;
+        time_initialized = true;
+        is_last_C12_satisfy = false;
+    }
+
+    if (takeoff_land_data.landed){
+        time_C12_reached = now_time;
+        is_last_C12_satisfy = false;
+    }
+    else{
+        const bool C12_satisfy =
+            (static_cast<double>(des.position[2]) - odom_data.p[2]) < POSITION_DEVIATION_C &&
+            odom_data.v.norm() < VELOCITY_THR_C;
+
+        if (C12_satisfy && !is_last_C12_satisfy){
+            time_C12_reached = now_time;
+        }
+        else if (C12_satisfy && is_last_C12_satisfy){
+            if ((now_time - time_C12_reached).seconds() > TIME_KEEP_C){
+                landed = true;
+            }
+        }
+        is_last_C12_satisfy = C12_satisfy;
+    }
+}
 
 px4_msgs::msg::TrajectorySetpoint CtrlFSM::get_takeoff_des(rclcpp::Time& now_time) {
     double delta_t = (now_time - takeoff_start_time).seconds();
@@ -540,29 +592,41 @@ px4_msgs::msg::TrajectorySetpoint CtrlFSM::get_takeoff_des(rclcpp::Time& now_tim
 bool CtrlFSM::switch_to_offboard(rclcpp::Time& now_time, bool on_off){
     // 如果已有请求在进行
     if (mode_in_progress){
+        // 如果目标发生变化 → 重新发命令
+        if (on_off != offboard_target){
+            if (on_off){
+                publish_vehicle_command(now_time, px4_msgs::msg::VehicleCommand::VEHICLE_CMD_DO_SET_MODE, 1, mode_to_com(Mode_t::OFFBOARD));
+            }
+            else{
+                publish_vehicle_command(now_time, px4_msgs::msg::VehicleCommand::VEHICLE_CMD_DO_SET_MODE, 1, mode_to_com(status_to_mode(state_data.state_before_offboard)));
+            }
+            
+            mode_start_time = now_time;
+            offboard_target = on_off;
+
+            RCLCPP_WARN(node_->get_logger(), "检测到新的 offboard 切换请求，重新发送命令");
+            return false;
+        }
         // 成功判断
-        if (on_off && state_data.current_state.nav_state == px4_msgs::msg::VehicleStatus::NAVIGATION_STATE_OFFBOARD){
+        else if (on_off && state_data.current_state.nav_state == px4_msgs::msg::VehicleStatus::NAVIGATION_STATE_OFFBOARD){
             RCLCPP_INFO(node_->get_logger(), "成功进入 Offboard 模式！");
             mode_in_progress = false;
             return true;
         }
-        else if (!on_off && state_data.current_state.nav_state == state_data.state_before_offboard.nav_state)
-        {
+        else if (!on_off && state_data.current_state.nav_state == state_data.state_before_offboard.nav_state){
             RCLCPP_INFO(node_->get_logger(), "成功退出 Offboard 模式！");
             mode_in_progress = false;
             return true;
         }
 
-        else if (!on_off && state_data.current_state.nav_state != px4_msgs::msg::VehicleStatus::NAVIGATION_STATE_OFFBOARD)
-        {
+        else if (!on_off && state_data.current_state.nav_state != px4_msgs::msg::VehicleStatus::NAVIGATION_STATE_OFFBOARD){
             RCLCPP_INFO(node_->get_logger(), "Odom 数据异常，Offboard 模式降级，当前模式：%s！", mode_to_string(status_to_mode(state_data.current_state)).c_str());
             mode_in_progress = false;
             return true;
         }
         
         // 超时判断
-        else if ((now_time - mode_start_time).seconds() > 3.0)
-        {
+        else if ((now_time - mode_start_time).seconds() > 3.0){
             if (on_off){
                 RCLCPP_WARN(node_->get_logger(), "飞控拒绝进入 Offboard 模式！");
             }
@@ -571,7 +635,8 @@ bool CtrlFSM::switch_to_offboard(rclcpp::Time& now_time, bool on_off){
             }
             mode_in_progress = false;
             return false;
-        }     
+        }    
+        return false;
     }
 
     mode_start_time = now_time;
@@ -617,6 +682,7 @@ bool CtrlFSM::switch_to_altctl(rclcpp::Time& now_time){
             altctl_in_progress = false;
             return false;
         }
+        return false;
     }
 
     altctl_start_time = now_time;
@@ -643,6 +709,7 @@ bool CtrlFSM::switch_to_position(rclcpp::Time& now_time){
             position_in_progress = false;
             return false;
         }
+        return false;
     }
 
     position_start_time = now_time;

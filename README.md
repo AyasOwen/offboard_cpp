@@ -145,7 +145,7 @@ rc_debug:
   ch_gear: 9           # 遥控器 Offboard 模式通道
 ```
 
-## 节点说明
+### 节点说明
 
 - **订阅话题**:
 
@@ -174,6 +174,26 @@ rc_debug:
   - `/fmu/in/vehicle_command` - 飞行器命令
 
   - `/offboard/trigger` - 由控制器发布的里程计数据，用于触发外部命令并统一时间戳
+
+### Debug 说明
+
+在 **CMakeLists.txt** 文件内预留了 Debug 用的宏定义：
+
+- `add_compile_definitions(TEXT_RC)` - 没有遥控器时测试 RC 用
+
+- `add_compile_definitions(VEL_IN_BODY)` - 处理机体坐标系速度，如果 Odom 里的速度是相对于机体坐标系的，需要旋转到世界坐标系
+
+- `add_compile_definitions(TEXT_OFFBOARD)` - 打印外部命令时间戳用
+
+在 **text** 文件夹内有预设好的 Debug 用脚本：
+
+- 依赖
+
+```bash
+pip3 install pynput -i https://mirrors.huaweicloud.com/repository/pypi/simple
+```
+
+- `mock_rc_control.py` - 用于在仿真环境下模拟 RC 通道按键
 
 ## 故障排除
 

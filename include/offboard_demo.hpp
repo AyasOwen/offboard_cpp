@@ -9,6 +9,7 @@
 #include <std_msgs/msg/bool.hpp>
 #include <vector>
 #include <cmath>
+#include <array>
 
 /**
  * @brief Offboard Demo Node - 发布简单的轨迹点给控制节点
@@ -38,12 +39,20 @@ private:
     
     // 当前位置
     std::array<double, 3> current_position_{0.0, 0.0, 0.0};  // x, y, z
+    std::array<double, 3> current_velocity_{0.0, 0.0, 0.0};  // vx, vy, vz
     bool position_received_{false};
+
+    // 起飞/降落完成判据（速度接近静止）
+    bool takeoff_command_sent_{false};
+    double takeoff_start_z_{0.0};
+    bool takeoff_stable_started_{false};
+    bool land_stable_started_{false};
+    rclcpp::Time takeoff_stable_start_;
+    rclcpp::Time land_stable_start_;
     
     // 任务状态
     enum class MissionState {
         IDLE,           // 空闲
-        TAKEOFF,        // 起飞
         WAYPOINT_1,     // 航点1
         WAYPOINT_2,     // 航点2
         WAYPOINT_3,     // 航点3
@@ -60,8 +69,10 @@ private:
     std::vector<std::array<double, 4>> waypoints_;
     
     // 到达阈值
-    double position_threshold_{0.3};  // 位置到达阈值 (米)
-    double takeoff_height_{-1.5};     // 起飞高度 (NED坐标系)
+    double position_threshold_{0.1};  // 位置到达阈值 (米)
+    double takeoff_height_{-0.5};     // 起飞高度 (NED坐标系)
+    double velocity_threshold_{0.12}; // 速度静止阈值 (m/s)
+    double stable_time_{1.0};         // 持续静止时间 (s)
     
     // 回调函数
     void timerCallback();
@@ -70,6 +81,7 @@ private:
     
     // 辅助函数
     bool reachedTarget(double target_x, double target_y, double target_z);
+    bool isVelocityNearZero() const;
     
     // 发布控制指令
     void publishCommand(double x, double y, double z, double yaw);

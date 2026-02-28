@@ -35,6 +35,7 @@ public:
 
     Eigen::Vector4d start_pose;             // 起飞 / 降落前的位置
     Eigen::Vector4d hover_pose;             // 悬浮时的位置
+    bool landed{true};                      // 通过函数判断的是否着陆
 
     // 枚举无人机的状态
     enum State_t{
@@ -87,6 +88,7 @@ private:
     bool mode_in_progress{false};           // 标志位，判断是否在切换 Mode 进程中
     bool altctl_in_progress{false};         // 标志位，判断是否在进入 ALTCTL 模式进程中
     bool position_in_progress{false};       // 标志位，判断是否在进入 POSITION 模式进程中
+    bool offboard_target{false};            // 如果目标发生变化 → 重新发命令
     rclcpp::Time mode_start_time;           // 开始切换 Mode 进程的时间
     rclcpp::Time altctl_start_time;         // 开始进入 ALTCTL 模式进程的时间
     rclcpp::Time position_start_time;       // 开始进入 POSITION 模式进程的时间
@@ -103,6 +105,7 @@ private:
         bool velocity = true, bool acceleration = false, bool attitude = false, bool body_rate = false);
     void publish_trajectory_setpoint(rclcpp::Time& now_time);
     void publish_vehicle_command(rclcpp::Time& now_time, uint16_t command, float param1 = 0.0, float param2 = 0.0);
+    void land_detector(const px4_msgs::msg::TrajectorySetpoint& des, const rclcpp::Time& now_time);
 };
 
 #endif // CTRLFSM_HPP
