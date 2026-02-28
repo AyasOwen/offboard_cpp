@@ -233,8 +233,6 @@ colcon build --packages-select offboard_cpp --cmake-clean-first
 
 [兼容 ros2(foxy) 的 vision_to_mavros 功能包实现(BoomBoomFly, Not open source)](https://github.com/BoomBoomFly/ros2_foxy_vision_to_mavros)
 
-[PX4 无人机 Offboard 模式控制(python)(BoomBoomFly, Not open source)](https://github.com/BoomBoomFly/offboard)
-
 [YOLO and 飞桨推理(python)](https://github.com/AyasOwen/cv_yolo_paddle_pkg)
 
 [OpenCv 等基础功能实现(C++)](https://github.com/AyasOwen/opencv_cpp)
