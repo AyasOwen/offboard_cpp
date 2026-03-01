@@ -523,7 +523,7 @@ void CtrlFSM::land_detector(const px4_msgs::msg::TrajectorySetpoint& des, const 
         return;
     }
 
-    constexpr double POSITION_DEVIATION_C = -0.5;
+    constexpr double POSITION_DEVIATION_C = 0.5;
     constexpr double VELOCITY_THR_C = 0.1;
     constexpr double TIME_KEEP_C = 3.0;
 
@@ -543,7 +543,7 @@ void CtrlFSM::land_detector(const px4_msgs::msg::TrajectorySetpoint& des, const 
     }
     else{
         const bool C12_satisfy =
-            (static_cast<double>(des.position[2]) - odom_data.p[2]) < POSITION_DEVIATION_C &&
+            (odom_data.p[2] - des.position[2]) > POSITION_DEVIATION_C &&
             odom_data.v.norm() < VELOCITY_THR_C;
 
         if (C12_satisfy && !is_last_C12_satisfy){
