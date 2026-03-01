@@ -329,7 +329,7 @@ void CtrlFSM::FSM(){
             set_start_pose_for_takeoff_land();
             state = WANRING;
         }
-        else if(battery_data.volt < param_.low_voltage * 1.15 + 0.5){
+        else if(battery_data.volt < param_.low_voltage * 1.1 + 0.25){
             RCLCPP_WARN_THROTTLE(node_->get_logger(), *node_->get_clock(), 5000, "当前电量：%f", battery_data.volt);
         }
     }
