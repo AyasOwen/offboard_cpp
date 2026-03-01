@@ -43,7 +43,7 @@ OffboardDemoNode::OffboardDemoNode() : Node("offboard_demo_node") {
     RCLCPP_INFO(this->get_logger(), "等待 5 秒后开始任务...");
 }
 
-void OffboardDemoNode::timerCallback(){
+void OffboardDemoNode::timerCallback() {
     switch (mission_state_){
         case MissionState::IDLE:
             handleIdle();
@@ -77,20 +77,35 @@ void OffboardDemoNode::changeState(MissionState new_state) {
 void OffboardDemoNode::handleIdle() {
     double elapsed = (now() - state_start_time_).seconds();
 
-    if (!takeoff_sent_ && elapsed > 3.0){
-        publishTakeoffCommand();
-        takeoff_sent_ = true;
+    if (!takeoff_command_sent_ && elapsed > 5.0) {
+        RCLCPP_INFO(get_logger(), "开始起飞");
+        takeoff_start_z_ = current_position_[2];
+        takeoff_command_sent_ = true;
+        takeoff_stable_started_ = false;
     }
 
-    if (position_received_ && isVelocityNearZero()){
-        if (!stable_started_)
-        {
-            stable_start_time_ = now();
-            stable_started_ = true;
+    if (takeoff_command_sent_) {
+        publishTakeoffCommand();
+
+        const bool altitude_changed =
+            std::abs(current_position_[2] - takeoff_start_z_) > 0.3;
+
+        if (position_received_ &&
+            altitude_changed &&
+            isVelocityNearZero()) {
+            if (!takeoff_stable_started_) {
+                stable_start_time_ = now();
+                takeoff_stable_started_ = true;
+            }
+            else if ((now() - stable_start_time_).seconds() > stable_time_) {
+                RCLCPP_INFO(get_logger(), "起飞完成");
+
+                current_wp_index_ = 0;
+                changeState(MissionState::WAYPOINT);
+            }
         }
-        else if ((now() - stable_start_time_).seconds() > stable_time_){
-            current_wp_index_ = 0;
-            changeState(MissionState::WAYPOINT);
+        else {
+            takeoff_stable_started_ = false;
         }
     }
 }
@@ -103,12 +118,12 @@ void OffboardDemoNode::handleWaypoint(){
     publishControlMode();
     publishCommand(wp[0], wp[1], wp[2], wp[3]);
 
-    if (position_received_ && reachedTarget(wp[0], wp[1], wp[2])){
+    if (position_received_ && reachedTarget(wp[0], wp[1], wp[2])) {
         RCLCPP_INFO(get_logger(), "Reached waypoint %ld", current_wp_index_ + 1);
 
         current_wp_index_++;
 
-        if (current_wp_index_ >= waypoints_.size()){
+        if (current_wp_index_ >= waypoints_.size()) {
             changeState(MissionState::RETURN_HOME);
         }
     }
@@ -123,14 +138,25 @@ void OffboardDemoNode::handleReturnHome() {
     }
 }
 
-void OffboardDemoNode::handleLand(){
+void OffboardDemoNode::handleLand() {
     publishLandCommand();
 
-    if (position_received_ &&
-        std::abs(current_position_[2]) < 0.15 &&
-        isVelocityNearZero()) {
-        changeState(MissionState::DONE);
-        RCLCPP_INFO(get_logger(), "Mission Completed");
+    const bool near_ground =
+        position_received_ &&
+        std::abs(current_position_[2]) < 0.15;
+
+    if (near_ground && isVelocityNearZero()) {
+        if (!land_stable_started_) {
+            stable_start_time_ = now();
+            land_stable_started_ = true;
+        }
+        else if ((now() - stable_start_time_).seconds() > stable_time_) {
+            RCLCPP_INFO(get_logger(), "降落完成（稳定）");
+            changeState(MissionState::DONE);
+        }
+    }
+    else {
+        land_stable_started_ = false;
     }
 }
 

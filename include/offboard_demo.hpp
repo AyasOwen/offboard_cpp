@@ -84,6 +84,14 @@ private:
     double velocity_threshold_{0.12};
     double stable_time_{1.0};
     double takeoff_height_{-2.0};
+
+        /* 起飞逻辑 */
+    bool takeoff_command_sent_{false};
+    double takeoff_start_z_{0.0};
+    bool takeoff_stable_started_{false};
+
+    /* 降落逻辑 */
+    bool land_stable_started_{false};
 };
 
 #endif
