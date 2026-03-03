@@ -1,4 +1,6 @@
 #include <lib/CtrlFSM.hpp>
+#include <algorithm>
+#include <cmath>
 
 /* 
 如需花式降落（如斜向下 45° 降落）
@@ -560,18 +562,39 @@ void CtrlFSM::land_detector(const px4_msgs::msg::TrajectorySetpoint& des, const 
 
 px4_msgs::msg::TrajectorySetpoint CtrlFSM::get_takeoff_des(rclcpp::Time& now_time) {
     double delta_t = (now_time - takeoff_start_time).seconds();
+    double speed = std::abs(param_.takeoff_land.speed);
+    if (speed < 1e-6){
+        speed = 0.3;
+    }
+
+    double target_z = start_pose[2] - param_.takeoff_land.height;
+
+    // 位置轨迹：按设定速度线性上升，并在目标高度处限幅，避免继续越过目标高度
+    double z_cmd = start_pose[2] - delta_t * speed;;
+    if (z_cmd < target_z){
+        z_cmd = target_z;
+    }
+
+    // 速度前馈：接近目标高度时自动减速，减小切换悬停时的突变
+    double remaining = std::max(0.0, odom_data.p[2] - target_z);
+    double smooth_acc = std::max(0.2, speed);
+    double vel_mag = std::min(speed, std::sqrt(2.0 * smooth_acc * remaining));
+    float vz_cmd = 0.0f;
+    if (remaining > 1e-3){
+        vz_cmd = -static_cast<float>(vel_mag);
+    }
 
     px4_msgs::msg::TrajectorySetpoint des;
 
     des.timestamp = now_time.nanoseconds() / 1000;
     des.position[0] = start_pose[0];
     des.position[1] = start_pose[1];
-    des.position[2] = start_pose[2] - delta_t * param_.takeoff_land.speed;
+    des.position[2] = static_cast<float>(z_cmd);
 
     // 设置期望速度（水平静止，垂直上升）
     des.velocity[0] = 0.0f;
     des.velocity[1] = 0.0f;
-    des.velocity[2] = -param_.takeoff_land.speed;  // 负值表示向上（NED坐标系）
+    des.velocity[2] = vz_cmd;  // 负值表示向上（NED坐标系）
     
     // 加速度和jerk交给控制器计算
     des.acceleration[0] = NAN;
