@@ -173,7 +173,7 @@ rc_debug:
 
   - `/fmu/in/vehicle_command` - 飞行器命令
 
-  - `/offboard/trigger` - 由控制器发布的里程计数据，用于触发外部命令并统一时间戳
+  - `/offboard/trigger` - 用于触发外部命令并统一时间戳
 
 ### Debug 说明
 
@@ -195,6 +195,33 @@ pip3 install pynput -i https://mirrors.huaweicloud.com/repository/pypi/simple
 
 - `mock_rc_control.py` - 用于在仿真环境下模拟 RC 通道按键
 
+### 无人机蜂群使用说明
+
+- 蜂群 demo 启动
+
+一次启动三个无人机节点，需要修改的请前往 `launch/offboard_swarm_control.launch.py` 进行修改
+
+```BASH
+ros2 launch offboard_cpp offboard_swarm_control.launch.py
+```
+
+- 飞控设置说明
+
+需要在 PX4 飞控端进行设置，可以选择在编译固件时通过修改固件来实现每台无人机所发布的话题命名空间不同
+
+这边提供另一种已经编译烧录固件后的实现方法：
+
+在无人机的 SD 卡中，进入 /etc/ 目录（如果没有就新建），创建一个名为 extras.txt 的文件。
+
+在文件中写入以下指令（假设你使用的是 TELEM2，串口名为 /dev/ttyS2，波特率 921600）：
+
+```BASH
+# 先停止默认启动的客户端
+uxrce_dds_client stop
+# 重新启动并带上命名空间 -n drone1
+uxrce_dds_client start -t serial -d /dev/ttyS2 -b 921600 -n drone1
+```
+
 ## 故障排除
 
 ### 问题1: 无法接收飞控数据
@@ -209,14 +236,18 @@ pip3 install pynput -i https://mirrors.huaweicloud.com/repository/pypi/simple
 
 - 检查参数文件中的 `ch_mode` 和 `ch_gear` 配置
 
+- `ch_mode` - 悬浮模式扳机
+
+- `ch_gear` - 命令模式扳机
+
 - 确保里程计数据正常
 
 ### 问题3: 编译错误
 
 ```bash
 # 清理构建
-rm -rf build/ install/ log/
-colcon build --packages-select offboard_cpp --cmake-clean-first
+rm -rf build/offboard_cpp install/offboard_cpp log/offboard_cpp
+colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release --packages-select offboard_cpp --cmake-clean-first
 ```
 
 ## 安全注意事项
@@ -224,10 +255,7 @@ colcon build --packages-select offboard_cpp --cmake-clean-first
 1. **首次使用**: 建议在仿真环境中测试
 2. **电量监控**: 系统会在低电量时自动降落
 3. **失控保护**: 遥控器失联或里程计失效时自动返回位置(高度)控制模式(如果里程计失效且没有定高信息，则会返回手动模式)
-4. **急停**: 随时可以通过遥控器切换回手动模式
-
-
-
+4. **急停**: 随时可以通过遥控器从命令模式切换回位置模式（或悬浮模式）
 
 ## 其他部分
 
