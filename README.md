@@ -238,3 +238,5 @@ colcon build --packages-select offboard_cpp --cmake-clean-first
 [OpenCv 等基础功能实现(C++)](https://github.com/AyasOwen/opencv_cpp)
 
 [D435 和 T265 的联合使用(blog, ros1 暂未做 ros2 移植)](https://ayasowen.github.io/2024/11/17/T265%E5%92%8CD435%E8%81%94%E5%90%88%E4%BD%BF%E7%94%A8/)
+
+By[@CGC12123](https://github.com/CGC12123) [适用于机器人上/下位机串口通信的驱动（上位机部分）](https://github.com/BoomBoomFly/serial_driver_ros2)
