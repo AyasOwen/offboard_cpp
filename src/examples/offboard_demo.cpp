@@ -8,18 +8,18 @@ OffboardDemoNode::OffboardDemoNode() : Node("offboard_demo_node") {
     
     // 初始化发布者
     cmd_pub_ = this->create_publisher<px4_msgs::msg::TrajectorySetpoint>(
-        "/offboard/cmd", qos_px4);
+        "offboard/cmd", qos_px4);
     cmd_mode_pub_ = this->create_publisher<px4_msgs::msg::OffboardControlMode>(
-        "/offboard/cmd_mode", qos_px4);
+        "offboard/cmd_mode", qos_px4);
     takeoff_land_pub_ = this->create_publisher<std_msgs::msg::UInt8>(
-        "/offboard/takeoff_land", qos_px4);
+        "offboard/takeoff_land", qos_px4);
     
     odom_sub_ = this->create_subscription<px4_msgs::msg::VehicleOdometry>(
-        "/fmu/out/vehicle_odometry", qos_px4,
+        "fmu/out/vehicle_odometry", qos_px4,
         std::bind(&OffboardDemoNode::odomCallback, this, std::placeholders::_1));
 
     trigger_sub_ = this->create_subscription<std_msgs::msg::Bool>(
-        "/offboard/trigger", qos_px4,
+        "offboard/trigger", qos_px4,
         std::bind(&OffboardDemoNode::triggerCallback, this, std::placeholders::_1));
     
     // 初始化状态

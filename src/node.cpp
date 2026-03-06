@@ -1,4 +1,4 @@
-#include <swarm_node.hpp>
+#include <node.hpp>
 
 OffboardControlNode::OffboardControlNode() : Node("offboard_control_node"){
 }
@@ -20,59 +20,59 @@ void OffboardControlNode::init(const std::shared_ptr<OffboardControlNode>& self)
     
     // 初始化发布者
     fsm->offboard_pub = this->create_publisher<px4_msgs::msg::TrajectorySetpoint>(
-        "/fmu/in/trajectory_setpoint", qos_px4);
+        "fmu/in/trajectory_setpoint", qos_px4);
     fsm->trigger_pub = this->create_publisher<std_msgs::msg::Bool>(
-        "/offboard/trigger", qos_px4);
+        "offboard/trigger", qos_px4);
     fsm->offboard_mode_pub = this->create_publisher<px4_msgs::msg::OffboardControlMode>(
-        "/fmu/in/offboard_control_mode", qos_px4);
+        "fmu/in/offboard_control_mode", qos_px4);
     fsm->vehicle_com_pub = this->create_publisher<px4_msgs::msg::VehicleCommand>(
-        "/fmu/in/vehicle_command", qos_px4);
+        "fmu/in/vehicle_command", qos_px4);
 
     // 初始化订阅者
     odom_sub = this->create_subscription<px4_msgs::msg::VehicleOdometry>(
-        "/fmu/out/vehicle_odometry", qos_px4, 
+        "fmu/out/vehicle_odometry", qos_px4, 
         [this](px4_msgs::msg::VehicleOdometry::SharedPtr msg) {
             fsm->odom_data.feed(msg, param);
         });
     
     state_sub = this->create_subscription<px4_msgs::msg::VehicleStatus>(
-        "/fmu/out/vehicle_status", qos_px4, 
+        "fmu/out/vehicle_status", qos_px4, 
         [this](px4_msgs::msg::VehicleStatus::SharedPtr msg) {
             fsm->state_data.feed(msg);
         });
 
     rc_sub = this->create_subscription<px4_msgs::msg::RcChannels>(
-        "/fmu/out/rc_channels", qos_px4, 
+        "fmu/out/rc_channels", qos_px4, 
         [this](px4_msgs::msg::RcChannels::SharedPtr msg) {
             fsm->rc_data.feed(msg, param);
         });
 
     offboard_sub = this->create_subscription<px4_msgs::msg::TrajectorySetpoint>(
-        "/offboard/cmd", qos_px4, 
+        "offboard/cmd", qos_px4, 
         [this](px4_msgs::msg::TrajectorySetpoint::SharedPtr msg) {
             fsm->offboard_data.feed(msg);
         });
 
     offboard_mode_sub = this->create_subscription<px4_msgs::msg::OffboardControlMode>(
-        "/offboard/cmd_mode", qos_px4, 
+        "offboard/cmd_mode", qos_px4, 
         [this](px4_msgs::msg::OffboardControlMode::SharedPtr msg) {
             fsm->offboard_mode_data.feed(msg);
         });
 
     battery_sub = this->create_subscription<px4_msgs::msg::BatteryStatus>(
-        "/fmu/out/battery_status", qos_px4, 
+        "fmu/out/battery_status", qos_px4, 
         [this](px4_msgs::msg::BatteryStatus::SharedPtr msg) {
             fsm->battery_data.feed(msg);
         });
 
     takeoff_land_sub = this->create_subscription<std_msgs::msg::UInt8>(
-        "/offboard/takeoff_land", qos_px4, 
+        "offboard/takeoff_land", qos_px4, 
         [this](std_msgs::msg::UInt8::SharedPtr msg) {
             fsm->takeoff_land_data.feed_takeoff_land(msg);
         });
 
     land_detected_sub = this->create_subscription<px4_msgs::msg::VehicleLandDetected>(
-        "/fmu/out/vehicle_land_detected", qos_px4, 
+        "fmu/out/vehicle_land_detected", qos_px4, 
         [this](px4_msgs::msg::VehicleLandDetected::SharedPtr msg) {
             fsm->takeoff_land_data.feed_landed(msg);
         });

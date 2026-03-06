@@ -65,7 +65,7 @@ target_link_libraries(px4_offboard_lib
 )
 
 # ---------------------------------------------
-# 单机控制节点：offboard_node
+# 控制节点：offboard_node
 add_executable(offboard_node
   src/node.cpp
 )
@@ -75,21 +75,6 @@ target_link_libraries(offboard_node
 )
 
 ament_target_dependencies(offboard_node
-  rclcpp
-  std_msgs
-)
-
-# ---------------------------------------------
-# 蜂群控制节点：offboard_swarm_node
-add_executable(offboard_swarm_node
-  src/swarm_node.cpp
-)
-
-target_link_libraries(offboard_swarm_node
-  px4_offboard_lib
-)
-
-ament_target_dependencies(offboard_swarm_node
   rclcpp
   std_msgs
 )
@@ -110,7 +95,6 @@ ament_target_dependencies(offboard_demo
 install(TARGETS
   offboard_node
   offboard_demo
-  offboard_swarm_node
   DESTINATION lib/${PROJECT_NAME}
 )
 
