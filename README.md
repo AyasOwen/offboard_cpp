@@ -16,11 +16,11 @@ PX4 无人机 Offboard 模式底层控制(C++)
 
 ## Demo
 
-首次起飞示例 和 动物检测系统，具体请前往 [src/examples/README.md](https://github.com/BoomBoomFly/offboard_cpp/blob/DDS/src/examples/README.md)
+首次起飞示例 和 动物检测系统，具体请前往 [src/examples/README.md](./src/examples/README.md)
 
 ## Hardware
 
-其中**蜂群**所使用的无人机硬件清单在 [hardware/hardware.pdf](https://github.com/BoomBoomFly/offboard_cpp/blob/DDS/hardware/hardware.pdf)
+其中**蜂群**所使用的无人机硬件清单在 [hardware/hardware.pdf](./hardware/hardware.pdf)
 
 ## 注意事项
 
