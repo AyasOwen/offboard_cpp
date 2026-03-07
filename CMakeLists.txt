@@ -91,10 +91,23 @@ ament_target_dependencies(offboard_demo
   px4_msgs
 )
 
+# ---------------------------------------------
+# Animal Testing 节点
+add_executable(animal_testing
+  src/examples/animal_testing.cpp
+)
+
+ament_target_dependencies(animal_testing
+  rclcpp
+  std_msgs
+  px4_msgs
+)
+
 # 安装可执行文件
 install(TARGETS
   offboard_node
   offboard_demo
+  animal_testing
   DESTINATION lib/${PROJECT_NAME}
 )
 
