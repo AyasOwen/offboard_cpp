@@ -6,11 +6,21 @@ PX4 无人机 Offboard 模式底层控制(C++)
 
 该功能包仅作为 Offboard **底层主控**
 
+提供小型无人机蜂群的
+
 消息依赖：[px4_msgs](https://github.com/PX4/px4_msgs/tree/release/1.14)
 
 通信依赖: [Micro-XRCE-DDS-Agent](https://github.com/eProsima/Micro-XRCE-DDS-Agent/tree/v2.4.2)
 
 具体 Offboard 轨迹控制需要外部规划器(或自行写个轨迹节点，并将轨迹发布至对应话题)
+
+## Demo
+
+首次起飞示例 和 动物检测系统，具体请前往 [src/examples/README.md]()
+
+## Hardware
+
+其中**蜂群**所使用的无人机硬件清单在 [hardware/hardware.pdf]()
 
 ## 注意事项
 
