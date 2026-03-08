@@ -1,6 +1,28 @@
 #include <lib/param.hpp>
 
 Param_t::Param_t(){
+    msg_timeout.rc = 0.5;
+    msg_timeout.odom = 0.5;
+    msg_timeout.offboard = 0.5;
+    msg_timeout.offboardMode = 0.5;
+    msg_timeout.bat = 0.5;
+
+    takeoff_land.enable = true;
+    takeoff_land.enable_arm = true;
+    takeoff_land.speed = 0.3;
+    takeoff_land.height = 1.0;
+
+    low_voltage = 13.2;
+    odom_pos_jump = 0.3;
+
+    rc_debug.p = 1.5;
+    rc_debug.i = 0.01;
+    rc_debug.d = 0.15;
+    rc_debug.ch_p = 5;
+    rc_debug.ch_i = 6;
+    rc_debug.ch_d = 7;
+    rc_debug.ch_mode = 8;
+    rc_debug.ch_gear = 9;
 }
 
 void Param_t::getStaticParam(const std::shared_ptr<rclcpp::Node>& node){
@@ -23,18 +45,24 @@ void Param_t::getStaticParam(const std::shared_ptr<rclcpp::Node>& node){
     readStaticParam(node, "rc_debug.ch_gear", rc_debug.ch_gear);
 }
 
-// 动态参数回调实例
-DynamicParamNode::DynamicParamNode() : Node("dynamic_param_node"){
-    // 声明参数
-    params_.rc_debug.p = declare_parameter("rc_debug.p", params_.rc_debug.p);
-    params_.rc_debug.i = declare_parameter("rc_debug.i", params_.rc_debug.i);
-    params_.rc_debug.d = declare_parameter("rc_debug.d", params_.rc_debug.d);
-    // 注册回调
-    param_cb_ = add_on_set_parameters_callback(
-        std::bind(&DynamicParamNode::updateDynamicParams, this, std::placeholders::_1));
+void Param_t::readDynamicParam(const std::shared_ptr<rclcpp::Node>& node, const std::string& name, double& val){
+    val = node->declare_parameter<double>(name, val);
+
+    rclcpp::Parameter param(name, val);
+    RCLCPP_INFO(node->get_logger(),
+                "Read dynamic param %s: %s",
+                name.c_str(),
+                param.value_to_string().c_str());
 }
 
-rcl_interfaces::msg::SetParametersResult DynamicParamNode::updateDynamicParams(
+void Param_t::initDynamicParams(const std::shared_ptr<rclcpp::Node>& node){
+    readDynamicParam(node, "rc_debug.p", rc_debug.p);
+    readDynamicParam(node, "rc_debug.i", rc_debug.i);
+    readDynamicParam(node, "rc_debug.d", rc_debug.d);
+}
+
+rcl_interfaces::msg::SetParametersResult Param_t::updateDynamicParams(
+    const std::shared_ptr<rclcpp::Node>& node,
     const std::vector<rclcpp::Parameter>& parameters){
     rcl_interfaces::msg::SetParametersResult result;
     result.successful = true;
@@ -42,15 +70,18 @@ rcl_interfaces::msg::SetParametersResult DynamicParamNode::updateDynamicParams(
 
     for (const auto& param : parameters) {
         if (param.get_name() == "rc_debug.p"){
-            params_.rc_debug.p = param.as_double();
+            rc_debug.p = param.as_double();
+            RCLCPP_INFO(node->get_logger(), "Updated dynamic param rc_debug.p: %f", rc_debug.p);
         }
             
         else if (param.get_name() == "rc_debug.i"){
-            params_.rc_debug.i = param.as_double();
+            rc_debug.i = param.as_double();
+            RCLCPP_INFO(node->get_logger(), "Updated dynamic param rc_debug.i: %f", rc_debug.i);
         }
             
         else if (param.get_name() == "rc_debug.d"){
-            params_.rc_debug.d = param.as_double();
+            rc_debug.d = param.as_double();
+            RCLCPP_INFO(node->get_logger(), "Updated dynamic param rc_debug.d: %f", rc_debug.d);
         }
     }
     return result;

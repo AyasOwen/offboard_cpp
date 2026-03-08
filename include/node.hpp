@@ -13,6 +13,7 @@ private:
 
     Param_t param;
     std::unique_ptr<CtrlFSM> fsm;
+    rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr param_cb_;
 
     // 订阅器
     rclcpp::Subscription<px4_msgs::msg::RcChannels>::SharedPtr rc_sub;

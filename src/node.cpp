@@ -6,6 +6,11 @@ OffboardControlNode::OffboardControlNode() : Node("offboard_control_node"){
 void OffboardControlNode::init(const std::shared_ptr<OffboardControlNode>& self) {
     // 获取参数配置
     param.getStaticParam(self);
+    param.initDynamicParams(self);
+    param_cb_ = this->add_on_set_parameters_callback(
+        [this, self](const std::vector<rclcpp::Parameter>& parameters) {
+            return param.updateDynamicParams(self, parameters);
+        });
     #ifdef TEXT_RC
     this->declare_parameter("mock_rc_mode", 0.0);
     this->declare_parameter("mock_rc_gear", 0.0);

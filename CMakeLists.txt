@@ -11,6 +11,7 @@ endif()
 # 依赖包
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
+find_package(rcl_interfaces REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(px4_msgs REQUIRED)
 find_package(tf2 REQUIRED)
@@ -52,6 +53,7 @@ target_include_directories(px4_offboard_lib PUBLIC
 
 ament_target_dependencies(px4_offboard_lib
   rclcpp
+  rcl_interfaces
   std_msgs
   px4_msgs
   tf2
@@ -76,6 +78,7 @@ target_link_libraries(offboard_node
 
 ament_target_dependencies(offboard_node
   rclcpp
+  rcl_interfaces
   std_msgs
 )
 

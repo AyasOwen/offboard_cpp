@@ -1,6 +1,7 @@
 #ifndef __PARAM_HPP
 #define __PARAM_HPP
 
+#include <rcl_interfaces/msg/set_parameters_result.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 
@@ -57,6 +58,10 @@ public:
 
     Param_t();
     void getStaticParam(const std::shared_ptr<rclcpp::Node>& node);
+    void initDynamicParams(const std::shared_ptr<rclcpp::Node>& node);
+    rcl_interfaces::msg::SetParametersResult updateDynamicParams(
+        const std::shared_ptr<rclcpp::Node>& node,
+        const std::vector<rclcpp::Parameter>& parameters);
 
 private:
     // 读取静态参数的模板
@@ -81,18 +86,8 @@ private:
             throw;
         }       
     }
-};
 
-// 动态参数回调 Node
-class DynamicParamNode : public rclcpp::Node{
-public:
-    DynamicParamNode();
-
-private:
-    Param_t params_;
-    rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr param_cb_;
-    rcl_interfaces::msg::SetParametersResult updateDynamicParams(
-        const std::vector<rclcpp::Parameter>& parameters);
+    void readDynamicParam(const std::shared_ptr<rclcpp::Node>& node, const std::string& name, double& val);
 };
 
 #endif  // PARAM_HPP

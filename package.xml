@@ -17,6 +17,7 @@
   <!-- Dependencies -->
   <depend>action_msgs</depend>
   <depend>rclcpp</depend>
+  <depend>rcl_interfaces</depend>
   <depend>std_msgs</depend>
   <depend>px4_msgs</depend>
   <depend>tf2</depend>
