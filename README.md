@@ -8,9 +8,7 @@ PX4 无人机 Offboard 模式底层控制(C++)
 
 提供小型无人机蜂群的
 
-消息依赖：[px4_msgs](https://github.com/PX4/px4_msgs/tree/release/1.14)
-
-通信依赖: [Micro-XRCE-DDS-Agent](https://github.com/eProsima/Micro-XRCE-DDS-Agent/tree/v2.4.2)
+通信依赖: [MAVROS2](https://github.com/mavlink/mavros/tree/2.7.0)
 
 具体 Offboard 轨迹控制需要外部规划器(或自行写个轨迹节点，并将轨迹发布至对应话题)
 
@@ -128,7 +126,7 @@ make px4_fmu-v3_default
 
 ```cpp
 waypoints_ = {
-    {x1, y1, z1, yaw1},  // 航点1 (NED坐标系)
+    {x1, y1, z1, yaw1},  // 航点1 (ENU坐标系: x=East, y=North, z=Up)
     {x2, y2, z2, yaw2},  // 航点2
     // ... 添加更多航点
 };
@@ -161,31 +159,35 @@ rc_debug:
 
 - **订阅话题**:
 
-  - `/fmu/out/vehicle_odometry` - 里程计数据
+  - `mavros/local_position/odom` - 里程计数据 (ENU 坐标系)
 
-  - `/fmu/out/vehicle_status` - 飞控状态
+  - `mavros/state` - 飞控状态
 
-  - `/fmu/out/rc_channels` - 遥控器通道
+  - `mavros/extended_state` - 扩展状态 (着陆检测)
 
-  - `/fmu/out/battery_status` - 电池状态
+  - `mavros/rc/in` - 遥控器通道
 
-  - `/fmu/out/vehicle_land_detected` - 着陆检测
+  - `mavros/battery` - 电池状态
 
-  - `/offboard/cmd` - Offboard 控制指令
+  - `/offboard/cmd` - Offboard 控制指令 (ENU 坐标系)
 
-  - `/offboard/cmd_mode` - Offboard 控制模式
+  - `/offboard/cmd_mode` - Offboard 控制模式 (type_mask)
 
   - `/offboard/takeoff_land` - 起飞/降落命令
 
 - **发布话题**:
 
-  - `/fmu/in/trajectory_setpoint` - 轨迹设定点
-
-  - `/fmu/in/offboard_control_mode` - Offboard 控制模式
-
-  - `/fmu/in/vehicle_command` - 飞行器命令
+  - `mavros/setpoint_raw/local` - 位置设定点 (ENU 坐标系)
 
   - `/offboard/trigger` - 用于触发外部命令并统一时间戳
+
+- **服务客户端**:
+
+  - `mavros/set_mode` - 切换飞控模式 (OFFBOARD / POSCTL / ALTCTL)
+
+  - `mavros/cmd/arming` - 解锁 / 上锁
+
+  - `mavros/cmd/land` - 自主降落
 
 ### Debug 说明
 

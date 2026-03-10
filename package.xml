@@ -3,7 +3,7 @@
 <package format="3">
   <name>offboard_cpp</name>
   <version>0.0.2</version>
-  <description>ROS2 PX4 Offboard control node in C++ with px4_msgs and MicroXRCEDDS</description>
+  <description>ROS2 PX4 Offboard control node in C++ with MAVROS</description>
 
   <maintainer email="863237849@qq.com">orangepi</maintainer>
   <license>MIT</license>
@@ -19,7 +19,9 @@
   <depend>rclcpp</depend>
   <depend>rcl_interfaces</depend>
   <depend>std_msgs</depend>
-  <depend>px4_msgs</depend>
+  <depend>nav_msgs</depend>
+  <depend>sensor_msgs</depend>
+  <depend>mavros_msgs</depend>
   <depend>tf2</depend>
   <depend>tf2_ros</depend>
   <depend>tf2_geometry_msgs</depend>

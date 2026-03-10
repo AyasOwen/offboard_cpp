@@ -1,26 +1,34 @@
 #include "examples/animal_testing.hpp"
 
+namespace {
+uint16_t default_position_mask() {
+    using PT = mavros_msgs::msg::PositionTarget;
+    return PT::IGNORE_VX | PT::IGNORE_VY | PT::IGNORE_VZ |
+           PT::IGNORE_AFX | PT::IGNORE_AFY | PT::IGNORE_AFZ |
+           PT::IGNORE_YAW_RATE;
+}
+}
+
 AnimalTestingNode::AnimalTestingNode() : Node("animal_testing_node") {
     // 定义 QoS 策略
-    auto qos_px4 = rclcpp::QoS(rclcpp::KeepLast(1))
-                       .best_effort()
-                       .durability_volatile();
+    auto qos_px4 = rclcpp::QoS(rclcpp::KeepLast(10)).best_effort().durability_volatile();
+    auto qos_cmd = rclcpp::QoS(rclcpp::KeepLast(10)).reliable().durability_volatile();
     
     // 初始化发布者
-    cmd_pub_ = this->create_publisher<px4_msgs::msg::TrajectorySetpoint>(
-        "offboard/cmd", qos_px4);
-    cmd_mode_pub_ = this->create_publisher<px4_msgs::msg::OffboardControlMode>(
-        "offboard/cmd_mode", qos_px4);
+    cmd_pub_ = this->create_publisher<mavros_msgs::msg::PositionTarget>(
+        "offboard/cmd", qos_cmd);
+    cmd_mode_pub_ = this->create_publisher<std_msgs::msg::UInt16>(
+        "offboard/cmd_mode", qos_cmd);
     takeoff_land_pub_ = this->create_publisher<std_msgs::msg::UInt8>(
-        "offboard/takeoff_land", qos_px4);
+        "offboard/takeoff_land", qos_cmd);
     current_id_pub_ = this->create_publisher<std_msgs::msg::Int32>(
         "/current_map_id", 10);
     path_pub_ = this->create_publisher<std_msgs::msg::Int32MultiArray>(
         "/final_path", 10);
     
     // 初始化订阅者
-    odom_sub_ = this->create_subscription<px4_msgs::msg::VehicleOdometry>(
-        "fmu/out/vehicle_odometry", qos_px4,
+    odom_sub_ = this->create_subscription<nav_msgs::msg::Odometry>(
+        "mavros/local_position/odom", qos_px4,
         std::bind(&AnimalTestingNode::odomCallback, this, std::placeholders::_1));
     
     no_fly_sub_ = this->create_subscription<std_msgs::msg::Int32MultiArray>(
@@ -32,7 +40,7 @@ AnimalTestingNode::AnimalTestingNode() : Node("animal_testing_node") {
         std::bind(&AnimalTestingNode::startSignalCallback, this, std::placeholders::_1));
 
     trigger_sub_ = this->create_subscription<std_msgs::msg::Bool>(
-        "offboard/trigger", qos_px4,
+        "offboard/trigger", qos_cmd,
         std::bind(&AnimalTestingNode::triggerCallback, this, std::placeholders::_1));
     
     // 初始化状态
@@ -216,15 +224,16 @@ void AnimalTestingNode::handleLand() {
 
 /* -------------------- 回调函数 -------------------- */
 
-void AnimalTestingNode::odomCallback(const px4_msgs::msg::VehicleOdometry::SharedPtr msg) {
-    // NED坐标系
-    current_position_[0] = msg->position[0];
-    current_position_[1] = msg->position[1];
-    current_position_[2] = msg->position[2];
+void AnimalTestingNode::odomCallback(const nav_msgs::msg::Odometry::SharedPtr msg) {
+    const auto &p = msg->pose.pose.position;
+    const auto &v = msg->twist.twist.linear;
+    current_position_[0] = p.x;  // ENU East
+    current_position_[1] = p.y;  // ENU North
+    current_position_[2] = p.z;  // ENU Up
 
-    current_velocity_[0] = msg->velocity[0];
-    current_velocity_[1] = msg->velocity[1];
-    current_velocity_[2] = msg->velocity[2];
+    current_velocity_[0] = v.x;
+    current_velocity_[1] = v.y;
+    current_velocity_[2] = v.z;
 
     position_received_ = true;
 }
@@ -264,40 +273,25 @@ void AnimalTestingNode::triggerCallback(const std_msgs::msg::Bool::SharedPtr msg
 /* -------------------- 发布接口 -------------------- */
 
 void AnimalTestingNode::publishCommand(double x, double y, double z, double yaw) {
-    px4_msgs::msg::TrajectorySetpoint msg;
-    msg.timestamp = this->now().nanoseconds() / 1000;
-    
-    msg.position[0] = static_cast<float>(x);
-    msg.position[1] = static_cast<float>(y);
-    msg.position[2] = static_cast<float>(z);
-    
-    msg.velocity[0] = NAN;
-    msg.velocity[1] = NAN;
-    msg.velocity[2] = NAN;
-    
-    msg.acceleration[0] = NAN;
-    msg.acceleration[1] = NAN;
-    msg.acceleration[2] = NAN;
-    
-    msg.jerk[0] = NAN;
-    msg.jerk[1] = NAN;
-    msg.jerk[2] = NAN;
-    
+    mavros_msgs::msg::PositionTarget msg;
+    msg.coordinate_frame = mavros_msgs::msg::PositionTarget::FRAME_LOCAL_ENU;
+    msg.type_mask = default_position_mask();
+    msg.position.x = static_cast<float>(x);
+    msg.position.y = static_cast<float>(y);
+    msg.position.z = static_cast<float>(z);
     msg.yaw = static_cast<float>(yaw);
-    msg.yawspeed = NAN;
-    
     cmd_pub_->publish(msg);
 }
 
 void AnimalTestingNode::publishControlMode(bool position, bool velocity, bool acceleration) {
-    px4_msgs::msg::OffboardControlMode msg;
-    msg.timestamp = this->now().nanoseconds() / 1000;
-    msg.position = position;
-    msg.velocity = velocity;
-    msg.acceleration = acceleration;
-    msg.attitude = false;
-    msg.body_rate = false;
-    
+    std_msgs::msg::UInt16 msg;
+    using PT = mavros_msgs::msg::PositionTarget;
+    uint16_t mask = 0;
+    if (!position) mask |= PT::IGNORE_PX | PT::IGNORE_PY | PT::IGNORE_PZ;
+    if (!velocity) mask |= PT::IGNORE_VX | PT::IGNORE_VY | PT::IGNORE_VZ;
+    if (!acceleration) mask |= PT::IGNORE_AFX | PT::IGNORE_AFY | PT::IGNORE_AFZ;
+    mask |= PT::IGNORE_YAW_RATE;
+    msg.data = mask;
     cmd_mode_pub_->publish(msg);
 }
 
@@ -325,9 +319,9 @@ void AnimalTestingNode::getPos(int map_id, float pos[2]) {
         return;
     }
     
-    // NED坐标系：北(x)从4.0到0.0，东(y)从0.0到-3.0
-    pos[0] = 4.0f - row * 0.5f;
-    pos[1] = -col * 0.5f;
+    // ENU坐标系：x=East, y=North
+    pos[0] = -col * 0.5f;          // ENU East
+    pos[1] = 4.0f - row * 0.5f;   // ENU North
 }
 
 std::pair<int, int> AnimalTestingNode::idToRC(int id) {
@@ -339,9 +333,9 @@ int AnimalTestingNode::rcToID(int row, int col) {
 }
 
 int AnimalTestingNode::getMapIDFromPos(float x, float y) {
-    // 从坐标反推行列
-    int row = static_cast<int>((4.0f - x + 0.25f) / 0.5f);
-    int col = static_cast<int>((-y + 0.25f) / 0.5f);
+    // ENU: x=East, y=North
+    int row = static_cast<int>((4.0f - y + 0.25f) / 0.5f);
+    int col = static_cast<int>((-x + 0.25f) / 0.5f);
 
     if (row < 0 || row >= ROWS || col < 0 || col >= COLS) {
         return -1;

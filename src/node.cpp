@@ -19,66 +19,67 @@ void OffboardControlNode::init(const std::shared_ptr<OffboardControlNode>& self)
     fsm = std::make_unique<CtrlFSM>(param, self);
 
     // 定义 QoS 策略
-    auto qos_px4 = rclcpp::QoS(rclcpp::KeepLast(1))
-                       .best_effort()
-                       .durability_volatile();
+    auto qos_sensor = rclcpp::QoS(rclcpp::KeepLast(10)).best_effort().durability_volatile();
+    auto qos_cmd = rclcpp::QoS(rclcpp::KeepLast(10)).reliable().durability_volatile();
     
     // 初始化发布者
-    fsm->offboard_pub = this->create_publisher<px4_msgs::msg::TrajectorySetpoint>(
-        "fmu/in/trajectory_setpoint", qos_px4);
+    fsm->offboard_pub = this->create_publisher<mavros_msgs::msg::PositionTarget>(
+        "mavros/setpoint_raw/local", qos_cmd);
     fsm->trigger_pub = this->create_publisher<std_msgs::msg::Bool>(
-        "offboard/trigger", qos_px4);
-    fsm->offboard_mode_pub = this->create_publisher<px4_msgs::msg::OffboardControlMode>(
-        "fmu/in/offboard_control_mode", qos_px4);
-    fsm->vehicle_com_pub = this->create_publisher<px4_msgs::msg::VehicleCommand>(
-        "fmu/in/vehicle_command", qos_px4);
+        "offboard/trigger", qos_cmd);
+    fsm->offboard_mode_pub = this->create_publisher<std_msgs::msg::UInt16>(
+        "offboard/cmd_mode", qos_cmd);
+
+    fsm->set_mode_client = this->create_client<mavros_msgs::srv::SetMode>("mavros/set_mode");
+    fsm->arm_client = this->create_client<mavros_msgs::srv::CommandBool>("mavros/cmd/arming");
+    fsm->land_client = this->create_client<mavros_msgs::srv::CommandTOL>("mavros/cmd/land");
 
     // 初始化订阅者
-    odom_sub = this->create_subscription<px4_msgs::msg::VehicleOdometry>(
-        "fmu/out/vehicle_odometry", qos_px4, 
-        [this](px4_msgs::msg::VehicleOdometry::SharedPtr msg) {
+    odom_sub = this->create_subscription<nav_msgs::msg::Odometry>(
+        "mavros/local_position/odom", qos_sensor,
+        [this](nav_msgs::msg::Odometry::SharedPtr msg) {
             fsm->odom_data.feed(msg, param);
         });
     
-    state_sub = this->create_subscription<px4_msgs::msg::VehicleStatus>(
-        "fmu/out/vehicle_status", qos_px4, 
-        [this](px4_msgs::msg::VehicleStatus::SharedPtr msg) {
+    state_sub = this->create_subscription<mavros_msgs::msg::State>(
+        "mavros/state", qos_sensor,
+        [this](mavros_msgs::msg::State::SharedPtr msg) {
             fsm->state_data.feed(msg);
         });
 
-    rc_sub = this->create_subscription<px4_msgs::msg::RcChannels>(
-        "fmu/out/rc_channels", qos_px4, 
-        [this](px4_msgs::msg::RcChannels::SharedPtr msg) {
+    rc_sub = this->create_subscription<mavros_msgs::msg::RCIn>(
+        "mavros/rc/in", qos_sensor,
+        [this](mavros_msgs::msg::RCIn::SharedPtr msg) {
             fsm->rc_data.feed(msg, param);
         });
 
-    offboard_sub = this->create_subscription<px4_msgs::msg::TrajectorySetpoint>(
-        "offboard/cmd", qos_px4, 
-        [this](px4_msgs::msg::TrajectorySetpoint::SharedPtr msg) {
+    offboard_sub = this->create_subscription<mavros_msgs::msg::PositionTarget>(
+        "offboard/cmd", qos_cmd,
+        [this](mavros_msgs::msg::PositionTarget::SharedPtr msg) {
             fsm->offboard_data.feed(msg);
         });
 
-    offboard_mode_sub = this->create_subscription<px4_msgs::msg::OffboardControlMode>(
-        "offboard/cmd_mode", qos_px4, 
-        [this](px4_msgs::msg::OffboardControlMode::SharedPtr msg) {
+    offboard_mode_sub = this->create_subscription<std_msgs::msg::UInt16>(
+        "offboard/cmd_mode", qos_cmd,
+        [this](std_msgs::msg::UInt16::SharedPtr msg) {
             fsm->offboard_mode_data.feed(msg);
         });
 
-    battery_sub = this->create_subscription<px4_msgs::msg::BatteryStatus>(
-        "fmu/out/battery_status", qos_px4, 
-        [this](px4_msgs::msg::BatteryStatus::SharedPtr msg) {
+    battery_sub = this->create_subscription<sensor_msgs::msg::BatteryState>(
+        "mavros/battery", qos_sensor,
+        [this](sensor_msgs::msg::BatteryState::SharedPtr msg) {
             fsm->battery_data.feed(msg);
         });
 
     takeoff_land_sub = this->create_subscription<std_msgs::msg::UInt8>(
-        "offboard/takeoff_land", qos_px4, 
+        "offboard/takeoff_land", qos_cmd,
         [this](std_msgs::msg::UInt8::SharedPtr msg) {
             fsm->takeoff_land_data.feed_takeoff_land(msg);
         });
 
-    land_detected_sub = this->create_subscription<px4_msgs::msg::VehicleLandDetected>(
-        "fmu/out/vehicle_land_detected", qos_px4, 
-        [this](px4_msgs::msg::VehicleLandDetected::SharedPtr msg) {
+    land_detected_sub = this->create_subscription<mavros_msgs::msg::ExtendedState>(
+        "mavros/extended_state", qos_sensor,
+        [this](mavros_msgs::msg::ExtendedState::SharedPtr msg) {
             fsm->takeoff_land_data.feed_landed(msg);
         });
 

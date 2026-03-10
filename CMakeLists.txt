@@ -13,7 +13,9 @@ find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rcl_interfaces REQUIRED)
 find_package(std_msgs REQUIRED)
-find_package(px4_msgs REQUIRED)
+find_package(nav_msgs REQUIRED)
+find_package(sensor_msgs REQUIRED)
+find_package(mavros_msgs REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
@@ -55,7 +57,9 @@ ament_target_dependencies(px4_offboard_lib
   rclcpp
   rcl_interfaces
   std_msgs
-  px4_msgs
+  nav_msgs
+  sensor_msgs
+  mavros_msgs
   tf2
   tf2_ros
   tf2_geometry_msgs
@@ -80,6 +84,9 @@ ament_target_dependencies(offboard_node
   rclcpp
   rcl_interfaces
   std_msgs
+  nav_msgs
+  sensor_msgs
+  mavros_msgs
 )
 
 # ---------------------------------------------
@@ -91,7 +98,8 @@ add_executable(offboard_demo
 ament_target_dependencies(offboard_demo
   rclcpp
   std_msgs
-  px4_msgs
+  nav_msgs
+  mavros_msgs
 )
 
 # ---------------------------------------------
@@ -103,7 +111,8 @@ add_executable(animal_testing
 ament_target_dependencies(animal_testing
   rclcpp
   std_msgs
-  px4_msgs
+  nav_msgs
+  mavros_msgs
 )
 
 # 安装可执行文件

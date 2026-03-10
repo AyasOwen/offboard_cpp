@@ -2,9 +2,9 @@
 #define ANIMAL_TESTING_HPP
 
 #include <rclcpp/rclcpp.hpp>
-#include <px4_msgs/msg/trajectory_setpoint.hpp>
-#include <px4_msgs/msg/offboard_control_mode.hpp>
-#include <px4_msgs/msg/vehicle_odometry.hpp>
+#include <mavros_msgs/msg/position_target.hpp>
+#include <nav_msgs/msg/odometry.hpp>
+#include <std_msgs/msg/u_int16.hpp>
 #include <std_msgs/msg/u_int8.hpp>
 #include <std_msgs/msg/bool.hpp>
 #include <std_msgs/msg/int32.hpp>
@@ -38,14 +38,14 @@ private:
 
     /* -------------------- ROS 通信 -------------------- */
     // 发布器
-    rclcpp::Publisher<px4_msgs::msg::TrajectorySetpoint>::SharedPtr cmd_pub_;
-    rclcpp::Publisher<px4_msgs::msg::OffboardControlMode>::SharedPtr cmd_mode_pub_;
+    rclcpp::Publisher<mavros_msgs::msg::PositionTarget>::SharedPtr cmd_pub_;
+    rclcpp::Publisher<std_msgs::msg::UInt16>::SharedPtr cmd_mode_pub_;
     rclcpp::Publisher<std_msgs::msg::UInt8>::SharedPtr takeoff_land_pub_;
     rclcpp::Publisher<std_msgs::msg::Int32>::SharedPtr current_id_pub_;
     rclcpp::Publisher<std_msgs::msg::Int32MultiArray>::SharedPtr path_pub_;
 
     // 订阅器
-    rclcpp::Subscription<px4_msgs::msg::VehicleOdometry>::SharedPtr odom_sub_;
+    rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub_;
     rclcpp::Subscription<std_msgs::msg::Int32MultiArray>::SharedPtr no_fly_sub_;
     rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr start_signal_sub_;
     rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr trigger_sub_;
@@ -54,7 +54,7 @@ private:
 
     /* -------------------- 回调函数 -------------------- */
     void timerCallback();
-    void odomCallback(const px4_msgs::msg::VehicleOdometry::SharedPtr msg);
+    void odomCallback(const nav_msgs::msg::Odometry::SharedPtr msg);
     void noFlyCallback(const std_msgs::msg::Int32MultiArray::SharedPtr msg);
     void startSignalCallback(const std_msgs::msg::Bool::SharedPtr msg);
     void triggerCallback(const std_msgs::msg::Bool::SharedPtr msg);
@@ -126,7 +126,7 @@ private:
     double position_threshold_{0.1};
     double velocity_threshold_{0.12};
     double stable_time_{1.0};
-    double flight_height_{-1.2};  // NED坐标系，负值表示向上
+    double flight_height_{1.2};  // ENU坐标系，正値表示向上
 
     // 地图参数
     static constexpr int ROWS = 9;

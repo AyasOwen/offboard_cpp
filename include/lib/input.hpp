@@ -17,16 +17,16 @@
 #include <limits>
 
 #include <std_msgs/msg/u_int8.hpp>
+#include <std_msgs/msg/u_int16.hpp>
 #include <std_msgs/msg/bool.hpp>
-#include <px4_msgs/msg/vehicle_odometry.hpp>
-#include <px4_msgs/msg/vehicle_status.hpp>
-#include "px4_msgs/msg/vehicle_command.hpp"
-#include <px4_msgs/msg/rc_channels.hpp>
-#include <px4_msgs/msg/battery_status.hpp>
-#include <px4_msgs/msg/offboard_control_mode.hpp>
-#include <px4_msgs/msg/trajectory_setpoint.hpp>
-#include <px4_msgs/msg/vehicle_command.hpp>
-#include <px4_msgs/msg/vehicle_land_detected.hpp>
+#include <nav_msgs/msg/odometry.hpp>
+#include <sensor_msgs/msg/battery_state.hpp>
+#include <mavros_msgs/msg/state.hpp>
+#include <mavros_msgs/msg/rc_in.hpp>
+#include <mavros_msgs/msg/position_target.hpp>
+#include <mavros_msgs/msg/extended_state.hpp>
+
+double normalize_angle(double angle);
 // 遥控器映射
 class RC_Data_t{
 public:
@@ -52,7 +52,7 @@ public:
     double ch[4];                           // 摇杆映射
 
     rclcpp::Time rcv_stamp;                 // 接收时间戳
-    px4_msgs::msg::RcChannels msg;
+    mavros_msgs::msg::RCIn msg;
 
     bool is_hover_mode;                     // 是否悬浮
     bool enter_hover_mode;                  // 是否进入悬浮
@@ -67,7 +67,7 @@ public:
     RC_Data_t(const rclcpp::Node::SharedPtr& node);
     void check_validity();                  // 检查数据有效性
     bool check_centered();                  // 建成摇杆是否回正
-    void feed(px4_msgs::msg::RcChannels::SharedPtr pMsg, const Param_t& param);       // 回调
+    void feed(mavros_msgs::msg::RCIn::SharedPtr pMsg, const Param_t& param);       // 回调
 };
 
 // Odom 信息
@@ -81,23 +81,23 @@ public:
     Eigen::Quaterniond q;           // 四元数姿态
     Eigen::Vector3d w;              // 角速度
 
-    px4_msgs::msg::VehicleOdometry msg;    // 消息
+    nav_msgs::msg::Odometry msg;    // 消息
     rclcpp::Time rcv_stamp;         // 接收时间戳
     bool recv_new_msg;              // 是否接收新信息的标志位
     bool pos_jump;                  // 位置是否发生突变
 
     Odom_Data_t(const rclcpp::Node::SharedPtr& node);
-    void feed(px4_msgs::msg::VehicleOdometry::SharedPtr pMsg, const Param_t& param);
+    void feed(nav_msgs::msg::Odometry::SharedPtr pMsg, const Param_t& param);
 };
 
 class State_Data_t{
 public:
     rclcpp::Node::SharedPtr node_;
-    px4_msgs::msg::VehicleStatus current_state;             // 当前模式
-    px4_msgs::msg::VehicleStatus state_before_offboard;     // 进入 Offboard 模式前的模式
+    mavros_msgs::msg::State current_state;             // 当前模式
+    mavros_msgs::msg::State state_before_offboard;     // 进入 Offboard 模式前的模式
 
     State_Data_t(const rclcpp::Node::SharedPtr& node);
-    void feed(px4_msgs::msg::VehicleStatus::SharedPtr pMsg);
+    void feed(mavros_msgs::msg::State::SharedPtr pMsg);
 };
 
 // 接收目标缓存区
@@ -113,24 +113,24 @@ public:
     double yaw;                 // 航向角
     double yaw_rate;            // 航向角速度
 
-    px4_msgs::msg::TrajectorySetpoint msg;
+    mavros_msgs::msg::PositionTarget msg;
 
     rclcpp::Time rcv_stamp;
 
     Offboard_Data_t(const rclcpp::Node::SharedPtr& node);
-    void feed(px4_msgs::msg::TrajectorySetpoint::SharedPtr pMsg);
+    void feed(mavros_msgs::msg::PositionTarget::SharedPtr pMsg);
 };
 
 class Offboard_Mode_Data_t{
 public:
     rclcpp::Node::SharedPtr node_;
 
-    px4_msgs::msg::OffboardControlMode msg;
+    uint16_t mask{0};
 
     rclcpp::Time rcv_stamp;
 
     Offboard_Mode_Data_t(const rclcpp::Node::SharedPtr& node);
-    void feed(px4_msgs::msg::OffboardControlMode::SharedPtr pMsg);
+    void feed(std_msgs::msg::UInt16::SharedPtr pMsg);
 };
 
 // 电池电量信息
@@ -143,11 +143,11 @@ public:
     double flyTime{0.0};        // 剩余飞行时间
     uint8_t warning{0};
 
-    px4_msgs::msg::BatteryStatus msg;
+    sensor_msgs::msg::BatteryState msg;
     rclcpp::Time rcv_stamp;     //  接收时间戳
 
     Battery_Data_t(const rclcpp::Node::SharedPtr& node);
-    void feed(px4_msgs::msg::BatteryStatus::SharedPtr pMsg);
+    void feed(sensor_msgs::msg::BatteryState::SharedPtr pMsg);
 };
 
 // 起飞降落处理
@@ -157,15 +157,15 @@ public:
 
     bool triggered{false};          // 标志位: 是否触发起飞或降落动作
     uint8_t takeoff_land_cmd{0};    // 0: none, 1: takeoff, 2: land
-    bool landed;                    // 是否到达地面
+    bool landed{true};              // 是否到达地面
 
-    px4_msgs::msg::VehicleLandDetected land_msg;
+    mavros_msgs::msg::ExtendedState land_msg;
     rclcpp::Time rcv_stamp;         // 时间戳
 
     Takeoff_Land_Data_t(const rclcpp::Node::SharedPtr& node);
 
     void feed_takeoff_land(std_msgs::msg::UInt8::SharedPtr pMsg);
-    void feed_landed(px4_msgs::msg::VehicleLandDetected::SharedPtr pMsg);
+    void feed_landed(mavros_msgs::msg::ExtendedState::SharedPtr pMsg);
 };
 
 #endif // INPUT_HPP

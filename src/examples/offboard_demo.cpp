@@ -1,21 +1,29 @@
 #include "examples/offboard_demo.hpp"
 
+namespace {
+uint16_t default_position_mask() {
+    using PT = mavros_msgs::msg::PositionTarget;
+    return PT::IGNORE_VX | PT::IGNORE_VY | PT::IGNORE_VZ |
+           PT::IGNORE_AFX | PT::IGNORE_AFY | PT::IGNORE_AFZ |
+           PT::IGNORE_YAW_RATE;
+}
+}
+
 OffboardDemoNode::OffboardDemoNode() : Node("offboard_demo_node") {
     // 初始化订阅者
-    auto qos_px4 = rclcpp::QoS(rclcpp::KeepLast(1))
-                       .best_effort()
-                       .durability_volatile();
+    auto qos_px4 = rclcpp::QoS(rclcpp::KeepLast(10)).best_effort().durability_volatile();
+    auto qos_cmd = rclcpp::QoS(rclcpp::KeepLast(10)).reliable().durability_volatile();
     
     // 初始化发布者
-    cmd_pub_ = this->create_publisher<px4_msgs::msg::TrajectorySetpoint>(
-        "offboard/cmd", qos_px4);
-    cmd_mode_pub_ = this->create_publisher<px4_msgs::msg::OffboardControlMode>(
-        "offboard/cmd_mode", qos_px4);
+    cmd_pub_ = this->create_publisher<mavros_msgs::msg::PositionTarget>(
+        "offboard/cmd", qos_cmd);
+    cmd_mode_pub_ = this->create_publisher<std_msgs::msg::UInt16>(
+        "offboard/cmd_mode", qos_cmd);
     takeoff_land_pub_ = this->create_publisher<std_msgs::msg::UInt8>(
-        "offboard/takeoff_land", qos_px4);
+        "offboard/takeoff_land", qos_cmd);
     
-    odom_sub_ = this->create_subscription<px4_msgs::msg::VehicleOdometry>(
-        "fmu/out/vehicle_odometry", qos_px4,
+    odom_sub_ = this->create_subscription<nav_msgs::msg::Odometry>(
+        "mavros/local_position/odom", qos_px4,
         std::bind(&OffboardDemoNode::odomCallback, this, std::placeholders::_1));
 
     trigger_sub_ = this->create_subscription<std_msgs::msg::Bool>(
@@ -25,13 +33,13 @@ OffboardDemoNode::OffboardDemoNode() : Node("offboard_demo_node") {
     // 初始化状态
     state_start_time_ = now();
     
-    // 定义航点 (NED坐标系: 北-东-地, z为负表示向上)
+    // 定义航点 (ENU坐标系: 东-北-天, z为正表示向上)
     // 方形飞行路径
     waypoints_ = {
-        {2.0, 0.0, -2.0, 0.0},      // 航点1: 向北2米
-        {2.0, 2.0, -2.0, M_PI/2},   // 航点2: 向东2米
-        {0.0, 2.0, -2.0, M_PI},     // 航点3: 向南2米
-        {0.0, 0.0, -2.0, -M_PI/2}   // 航点4: 向西2米，回到起点
+        {0.0, 2.0, 2.0, M_PI/2},    // 航点1: 向北2米
+        {2.0, 2.0, 2.0, 0.0},       // 航点2: 向东2米
+        {2.0, 0.0, 2.0, -M_PI/2},   // 航点3: 向南2米
+        {0.0, 0.0, 2.0, M_PI}       // 航点4: 向西2米，回到起点
     };
     
     // 创建定时器 (10Hz)
@@ -161,40 +169,25 @@ void OffboardDemoNode::handleLand() {
 }
 
 void OffboardDemoNode::publishCommand(double x, double y, double z, double yaw) {
-    px4_msgs::msg::TrajectorySetpoint msg;
-    msg.timestamp = this->now().nanoseconds() / 1000;
-    
-    msg.position[0] = static_cast<float>(x);
-    msg.position[1] = static_cast<float>(y);
-    msg.position[2] = static_cast<float>(z);
-    
-    msg.velocity[0] = NAN;
-    msg.velocity[1] = NAN;
-    msg.velocity[2] = NAN;
-    
-    msg.acceleration[0] = NAN;
-    msg.acceleration[1] = NAN;
-    msg.acceleration[2] = NAN;
-    
-    msg.jerk[0] = NAN;
-    msg.jerk[1] = NAN;
-    msg.jerk[2] = NAN;
-    
+    mavros_msgs::msg::PositionTarget msg;
+    msg.coordinate_frame = mavros_msgs::msg::PositionTarget::FRAME_LOCAL_ENU;
+    msg.type_mask = default_position_mask();
+    msg.position.x = static_cast<float>(x);
+    msg.position.y = static_cast<float>(y);
+    msg.position.z = static_cast<float>(z);
     msg.yaw = static_cast<float>(yaw);
-    msg.yawspeed = NAN;
-    
     cmd_pub_->publish(msg);
 }
 
 void OffboardDemoNode::publishControlMode(bool position, bool velocity, bool acceleration) {
-    px4_msgs::msg::OffboardControlMode msg;
-    msg.timestamp = this->now().nanoseconds() / 1000;
-    msg.position = position;
-    msg.velocity = velocity;
-    msg.acceleration = acceleration;
-    msg.attitude = false;
-    msg.body_rate = false;
-    
+    std_msgs::msg::UInt16 msg;
+    using PT = mavros_msgs::msg::PositionTarget;
+    uint16_t mask = 0;
+    if (!position) mask |= PT::IGNORE_PX | PT::IGNORE_PY | PT::IGNORE_PZ;
+    if (!velocity) mask |= PT::IGNORE_VX | PT::IGNORE_VY | PT::IGNORE_VZ;
+    if (!acceleration) mask |= PT::IGNORE_AFX | PT::IGNORE_AFY | PT::IGNORE_AFZ;
+    mask |= PT::IGNORE_YAW_RATE;
+    msg.data = mask;
     cmd_mode_pub_->publish(msg);
 }
 
@@ -210,16 +203,16 @@ void OffboardDemoNode::publishLandCommand() {
     takeoff_land_pub_->publish(msg);
 }
 
-void OffboardDemoNode::odomCallback(const px4_msgs::msg::VehicleOdometry::SharedPtr msg) {
-    // 更新当前位置
-    current_position_[0] = msg->position[0];
-    current_position_[1] = msg->position[1];
-    current_position_[2] = msg->position[2];
+void OffboardDemoNode::odomCallback(const nav_msgs::msg::Odometry::SharedPtr msg) {
+    const auto &p = msg->pose.pose.position;
+    const auto &v = msg->twist.twist.linear;
+    current_position_[0] = p.x;  // ENU East
+    current_position_[1] = p.y;  // ENU North
+    current_position_[2] = p.z;  // ENU Up
 
-    // 更新当前速度
-    current_velocity_[0] = msg->velocity[0];
-    current_velocity_[1] = msg->velocity[1];
-    current_velocity_[2] = msg->velocity[2];
+    current_velocity_[0] = v.x;
+    current_velocity_[1] = v.y;
+    current_velocity_[2] = v.z;
 
     position_received_ = true;
 }

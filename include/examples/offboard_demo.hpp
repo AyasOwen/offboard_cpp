@@ -2,9 +2,9 @@
 #define OFFBOARD_DEMO_HPP
 
 #include <rclcpp/rclcpp.hpp>
-#include <px4_msgs/msg/trajectory_setpoint.hpp>
-#include <px4_msgs/msg/offboard_control_mode.hpp>
-#include <px4_msgs/msg/vehicle_odometry.hpp>
+#include <mavros_msgs/msg/position_target.hpp>
+#include <nav_msgs/msg/odometry.hpp>
+#include <std_msgs/msg/u_int16.hpp>
 #include <std_msgs/msg/u_int8.hpp>
 #include <std_msgs/msg/bool.hpp>
 
@@ -30,18 +30,18 @@ private:
     void changeState(MissionState new_state);
 
     /* -------------------- ROS 通信 -------------------- */
-    rclcpp::Publisher<px4_msgs::msg::TrajectorySetpoint>::SharedPtr cmd_pub_;
-    rclcpp::Publisher<px4_msgs::msg::OffboardControlMode>::SharedPtr cmd_mode_pub_;
+    rclcpp::Publisher<mavros_msgs::msg::PositionTarget>::SharedPtr cmd_pub_;
+    rclcpp::Publisher<std_msgs::msg::UInt16>::SharedPtr cmd_mode_pub_;
     rclcpp::Publisher<std_msgs::msg::UInt8>::SharedPtr takeoff_land_pub_;
 
-    rclcpp::Subscription<px4_msgs::msg::VehicleOdometry>::SharedPtr odom_sub_;
+    rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub_;
     rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr trigger_sub_;
 
     rclcpp::TimerBase::SharedPtr timer_;
 
     /* -------------------- 回调函数 -------------------- */
     void timerCallback();
-    void odomCallback(const px4_msgs::msg::VehicleOdometry::SharedPtr msg);
+    void odomCallback(const nav_msgs::msg::Odometry::SharedPtr msg);
     void triggerCallback(const std_msgs::msg::Bool::SharedPtr msg);
 
     /* -------------------- 发布接口 -------------------- */
@@ -83,7 +83,7 @@ private:
     double position_threshold_{0.1};
     double velocity_threshold_{0.12};
     double stable_time_{1.0};
-    double takeoff_height_{-2.0};
+    double takeoff_height_{2.0};
 
         /* 起飞逻辑 */
     bool takeoff_command_sent_{false};

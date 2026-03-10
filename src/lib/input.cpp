@@ -1,5 +1,15 @@
 #include "lib/input.hpp"
 
+double normalize_angle(double angle) {
+    while (angle > M_PI) {
+        angle -= 2.0 * M_PI;
+    }
+    while (angle < -M_PI) {
+        angle += 2.0 * M_PI;
+    }
+    return angle;
+}
+
 
 // RC_Data_t
 // 初始化
@@ -30,13 +40,19 @@ bool RC_Data_t::check_centered(){
 }
 
 // 映射遥控器
-void RC_Data_t::feed(px4_msgs::msg::RcChannels::SharedPtr pMsg, const Param_t& param){
+void RC_Data_t::feed(mavros_msgs::msg::RCIn::SharedPtr pMsg, const Param_t& param){
     msg = *pMsg;
     rcv_stamp =  node_ -> now();
 
+    if (msg.channels.size() < 10) {
+        RCLCPP_WARN_THROTTLE(node_->get_logger(), *node_->get_clock(), 2000,
+            "RC channel count too low: %zu", msg.channels.size());
+        return;
+    }
+
     // 提取遥控器通道数据（根据实际通道映射调整）
     for(int i = 0; i < 4; i++){
-        ch[i] = ((double)msg.channels[i] - 1500.0) / 500.0;
+        ch[i] = (static_cast<double>(msg.channels[i]) - 1500.0) / 500.0;
         // 对处于死区的数据进行处理
         // 防止对摇杆过度敏感
         if (ch[i] > DEAD_ZONE){
@@ -50,8 +66,8 @@ void RC_Data_t::feed(px4_msgs::msg::RcChannels::SharedPtr pMsg, const Param_t& p
         }
     }
 
-    mode = ((double)msg.channels[param.rc_debug.ch_mode] - 1000.0) / 1000.0;
-    gear = ((double)msg.channels[param.rc_debug.ch_gear] - 1000.0) / 1000.0;
+    mode = (static_cast<double>(msg.channels[param.rc_debug.ch_mode]) - 1000.0) / 1000.0;
+    gear = (static_cast<double>(msg.channels[param.rc_debug.ch_gear]) - 1000.0) / 1000.0;
     #ifdef TEXT_RC
         double mock_mode = 0.0;
         double mock_gear = 0.0;
@@ -61,9 +77,9 @@ void RC_Data_t::feed(px4_msgs::msg::RcChannels::SharedPtr pMsg, const Param_t& p
         gear = mock_gear;
     #endif
     // 这里归一到了 [0, 1] ，如有别的需求，自行进行修改
-    p = ((double)msg.channels[param.rc_debug.ch_p] - 1000.0) / 1000.0;
-    i = ((double)msg.channels[param.rc_debug.ch_i] - 1000.0) / 1000.0;
-    d = ((double)msg.channels[param.rc_debug.ch_d] - 1000.0) / 1000.0;
+    p = (static_cast<double>(msg.channels[param.rc_debug.ch_p]) - 1000.0) / 1000.0;
+    i = (static_cast<double>(msg.channels[param.rc_debug.ch_i]) - 1000.0) / 1000.0;
+    d = (static_cast<double>(msg.channels[param.rc_debug.ch_d]) - 1000.0) / 1000.0;
 
     // 检测模式切换
     if (!have_init_last_mode) {
@@ -121,13 +137,19 @@ Odom_Data_t::Odom_Data_t(const rclcpp::Node::SharedPtr& node) : node_(node){
 }
 
 // 回调
-void Odom_Data_t::feed(px4_msgs::msg::VehicleOdometry::SharedPtr pMsg, const Param_t& param){
+void Odom_Data_t::feed(nav_msgs::msg::Odometry::SharedPtr pMsg, const Param_t& param){
     rcv_stamp =  node_ -> now();
     msg = *pMsg;
     recv_new_msg = true;
     bool is_first_msg = (rcv_stamp.nanoseconds() == 0);     // 判断是不是第一帧
 
-    Eigen::Vector3d new_p(msg.position[0], msg.position[1], msg.position[2]);
+    const auto &pos = msg.pose.pose.position;
+    const auto &vel = msg.twist.twist.linear;
+    const auto &ang_vel = msg.twist.twist.angular;
+    const auto &quat = msg.pose.pose.orientation;
+
+    // MAVROS local_position/odom is ENU; use ENU directly.
+    Eigen::Vector3d new_p(pos.x, pos.y, pos.z);
 
     //  突变检查逻辑
     if (is_first_msg) {
@@ -147,9 +169,14 @@ void Odom_Data_t::feed(px4_msgs::msg::VehicleOdometry::SharedPtr pMsg, const Par
     p = new_p;
 
     // 提取 v, q, w
-    v << msg.velocity[0], msg.velocity[1], msg.velocity[2];
-    q = Eigen::Quaterniond(msg.q[0], msg.q[1], msg.q[2], msg.q[3]);
-    w << msg.angular_velocity[0], msg.angular_velocity[1], msg.angular_velocity[2];
+    v << vel.x, vel.y, vel.z;
+
+    const double yaw_enu = std::atan2(
+        2.0 * (quat.w * quat.z + quat.x * quat.y),
+        1.0 - 2.0 * (quat.y * quat.y + quat.z * quat.z));
+    q = Eigen::AngleAxisd(yaw_enu, Eigen::Vector3d::UnitZ());
+
+    w << ang_vel.x, ang_vel.y, ang_vel.z;
 
     // 处理机体坐标系速度，如果 Odom 里的速度是相对于机体坐标系的，需要旋转到世界坐标系
     #ifdef VEL_IN_BODY 
@@ -181,7 +208,7 @@ State_Data_t::State_Data_t(const rclcpp::Node::SharedPtr& node) : node_(node){
 }
 
 // 记录当前模式
-void State_Data_t::feed(px4_msgs::msg::VehicleStatus::SharedPtr pMsg){
+void State_Data_t::feed(mavros_msgs::msg::State::SharedPtr pMsg){
     current_state = *pMsg;
 }
 
@@ -192,17 +219,17 @@ Offboard_Data_t::Offboard_Data_t(const rclcpp::Node::SharedPtr& node) : node_(no
 }
 
 // 缓存接收到的目标点
-void Offboard_Data_t::feed(px4_msgs::msg::TrajectorySetpoint::SharedPtr pMsg){
+void Offboard_Data_t::feed(mavros_msgs::msg::PositionTarget::SharedPtr pMsg){
     msg = *pMsg;
     rcv_stamp =  node_ -> now();
 
-    // 提取 p, v, a, j, yaw, yaw_rate
-    p << msg.position[0], msg.position[1], msg.position[2];
-    v << msg.velocity[0], msg.velocity[1], msg.velocity[2];
-    a << msg.acceleration[0], msg.acceleration[1], msg.acceleration[2];
-    j << msg.jerk[0], msg.jerk[1], msg.jerk[2];
+    // PositionTarget uses xyz vectors and ignores jerk.
+    p << msg.position.x, msg.position.y, msg.position.z;
+    v << msg.velocity.x, msg.velocity.y, msg.velocity.z;
+    a << msg.acceleration_or_force.x, msg.acceleration_or_force.y, msg.acceleration_or_force.z;
+    j.setZero();
     yaw = msg.yaw;
-    yaw_rate = msg.yawspeed;
+    yaw_rate = msg.yaw_rate;
 }
 
 // OffboardMode_Data_t
@@ -212,8 +239,8 @@ Offboard_Mode_Data_t::Offboard_Mode_Data_t(const rclcpp::Node::SharedPtr& node) 
 }
 
 // 回调
-void Offboard_Mode_Data_t::feed(px4_msgs::msg::OffboardControlMode::SharedPtr pMsg){
-    msg = *pMsg;
+void Offboard_Mode_Data_t::feed(std_msgs::msg::UInt16::SharedPtr pMsg){
+    mask = pMsg->data;
     rcv_stamp =  node_ -> now();
 }
 
@@ -224,13 +251,13 @@ Battery_Data_t::Battery_Data_t(const rclcpp::Node::SharedPtr& node) : node_(node
 }
 
 // 获取电池电量信息
-void Battery_Data_t::feed(px4_msgs::msg::BatteryStatus::SharedPtr pMsg){
+void Battery_Data_t::feed(sensor_msgs::msg::BatteryState::SharedPtr pMsg){
     msg = *pMsg;
     rcv_stamp =  node_ -> now();
-    volt = msg.voltage_filtered_v;
+    volt = msg.voltage;
     percentage = msg.remaining;
-    flyTime = msg.time_remaining_s;
-    warning = msg.warning;
+    flyTime = 0.0;
+    warning = 0;
 }
 
 // Takeoff_Land_Data_t
@@ -246,7 +273,7 @@ void Takeoff_Land_Data_t::feed_takeoff_land(std_msgs::msg::UInt8::SharedPtr pMsg
     takeoff_land_cmd = pMsg->data;
 }
 
-void Takeoff_Land_Data_t::feed_landed(px4_msgs::msg::VehicleLandDetected::SharedPtr pMsg){
+void Takeoff_Land_Data_t::feed_landed(mavros_msgs::msg::ExtendedState::SharedPtr pMsg){
     land_msg = *pMsg;
-    landed = pMsg->landed;
+    landed = (pMsg->landed_state == mavros_msgs::msg::ExtendedState::LANDED_STATE_ON_GROUND);
 }
